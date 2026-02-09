@@ -1,0 +1,51 @@
+# ============================================
+# CHAMP V3 — LiteLLM Brain Router
+# Phase 2: THE BRAIN
+# Built to build. Born to create.
+# ============================================
+# Multi-model router:
+#   - Claude Sonnet 4.5 (PRIMARY — deep thinking, coding, all-around)
+#   - Gemini Flash (VISION — image/screen analysis, fast multimodal)
+#   - GPT-4o (FALLBACK — creative tasks, backup brain)
+
+model_list:
+  # ---- PRIMARY BRAIN: Claude Sonnet 4.5 ----
+  # Default for everything. Deep reasoning, coding, analysis.
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5-20250929
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 4096
+
+  # ---- VISION BRAIN: Gemini 2.0 Flash ----
+  # Fast multimodal. Screen reading, image analysis, video frames.
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 4096
+
+  # ---- FALLBACK BRAIN: GPT-4o ----
+  # Strong creative writing, reliable backup if Claude is down.
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      max_tokens: 4096
+
+# ---- ROUTER SETTINGS ----
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  timeout: 120
+  fallbacks:
+    # If Claude goes down, fall back to GPT-4o
+    - claude-sonnet: [gpt-4o]
+
+# ---- LITELLM SETTINGS ----
+litellm_settings:
+  modify_params: true
+
+# ---- GENERAL SETTINGS ----
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

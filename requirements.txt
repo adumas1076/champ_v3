@@ -1,0 +1,16 @@
+# ---- Phase 1: Ears + Mouth (LiveKit Voice Agent) ----
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-plugins-noise-cancellation
+duckduckgo-search
+langchain_community
+requests
+python-dotenv
+
+# ---- Phase 2: Brain (LiteLLM + Persona + Mode Detection) ----
+fastapi>=0.115.0
+uvicorn>=0.34.0
+httpx>=0.28.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0

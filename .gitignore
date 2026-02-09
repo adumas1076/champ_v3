@@ -21,6 +21,10 @@ node_modules/
 hands/test-screenshot.png
 hands/test-wikipedia.png
 
+# Hands output
+hands/screenshots/
+output/
+
 # OS
 .DS_Store
 Thumbs.db

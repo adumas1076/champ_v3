@@ -225,3 +225,111 @@ class SupabaseMemory:
         except Exception as e:
             logger.error(f"Failed to fetch recent messages: {e}")
             return []
+
+    # ---- Mind Integration (Brick 6) ----
+
+    async def upsert_profile(
+        self,
+        user_id: str,
+        key: str,
+        value: str,
+        category: str = "general",
+        confidence: str = "medium",
+    ) -> None:
+        """Upsert a profile entry into mem_profile."""
+        if not self._client:
+            return
+
+        try:
+            await self._client.table("mem_profile").upsert(
+                {
+                    "user_id": user_id,
+                    "key": key,
+                    "value": value,
+                    "category": category,
+                    "confidence": confidence,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                on_conflict="user_id,key",
+            ).execute()
+            logger.debug(f"Profile upserted: {key}={value}")
+        except Exception as e:
+            logger.error(f"Profile upsert failed for {key}: {e}")
+
+    async def increment_lesson(
+        self, user_id: str, lesson_substring: str
+    ) -> None:
+        """Increment times_seen for lessons matching a substring."""
+        if not self._client:
+            return
+
+        try:
+            # Fetch existing lessons
+            result = await self._client.table("mem_lessons").select(
+                "id, lesson, times_seen"
+            ).eq("user_id", user_id).execute()
+
+            if not result.data:
+                return
+
+            # Find matches (case-insensitive substring)
+            needle = lesson_substring.lower()
+            for row in result.data:
+                if needle in row.get("lesson", "").lower():
+                    new_count = (row.get("times_seen", 0) or 0) + 1
+                    await self._client.table("mem_lessons").update(
+                        {"times_seen": new_count}
+                    ).eq("id", row["id"]).execute()
+                    logger.debug(
+                        f"Lesson incremented: '{row['lesson'][:50]}' → {new_count}x"
+                    )
+        except Exception as e:
+            logger.error(f"Lesson increment failed: {e}")
+
+    async def insert_lesson(
+        self, user_id: str, lesson: str, tags: list[str] = None
+    ) -> None:
+        """Insert a new draft lesson into mem_lessons."""
+        if not self._client:
+            return
+
+        try:
+            await self._client.table("mem_lessons").insert({
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "lesson": lesson,
+                "tags": tags or [],
+                "status": "draft",
+                "times_seen": 1,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+            logger.debug(f"New lesson inserted: '{lesson[:50]}'")
+        except Exception as e:
+            logger.error(f"Lesson insert failed: {e}")
+
+    async def insert_healing(
+        self,
+        user_id: str,
+        error_type: str,
+        severity: str,
+        trigger_context: str,
+        prevention_rule: str,
+    ) -> None:
+        """Insert a healing record into mem_healing."""
+        if not self._client:
+            return
+
+        try:
+            await self._client.table("mem_healing").insert({
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "error_type": error_type,
+                "severity": severity,
+                "trigger_context": trigger_context,
+                "prevention_rule": prevention_rule,
+                "resolved": False,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+            logger.debug(f"Healing record inserted: {error_type}")
+        except Exception as e:
+            logger.error(f"Healing insert failed: {e}")

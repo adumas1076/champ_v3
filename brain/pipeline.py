@@ -21,6 +21,7 @@ from brain.mode_detector import ModeDetector
 from brain.context_builder import ContextBuilder
 from brain.llm_client import LiteLLMClient
 from brain.memory import SupabaseMemory
+from mind.healing import HealingLoop
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class BrainPipeline:
         self.mode_detector = ModeDetector()
         self.context_builder = ContextBuilder()
         self.memory = SupabaseMemory(settings)
+        self.healing = HealingLoop()
 
     async def startup(self) -> None:
         """Initialize components on app startup."""
@@ -71,8 +73,18 @@ class BrainPipeline:
         # 2. Detect mode BEFORE LLM call
         mode = self.mode_detector.detect(user_message)
 
+        # 2.5 Healing detection (real-time friction check)
+        conv_id = request.user or None
+        recent = await self.memory.get_recent_messages(conv_id, limit=6) if conv_id else []
+        healing = self.healing.detect(user_message, mode, recent)
+        if healing.mode_override:
+            logger.info(f"[HEALING] Mode override: {mode.value} → {healing.mode_override.value}")
+            mode = healing.mode_override
+
         # 3. Fetch memory context
         memory_context = await self.memory.get_context("anthony")
+        if healing.warning_text:
+            memory_context = memory_context + "\n\n" + healing.warning_text if memory_context else healing.warning_text
 
         # 4. Build enriched context (persona + memory + mode)
         enriched_messages = self.context_builder.build(
@@ -89,7 +101,6 @@ class BrainPipeline:
         response = await self.llm_client.chat_completion(enriched_request)
 
         # 6. Store exchange (non-blocking, non-fatal)
-        conv_id = request.user or None
         if conv_id:
             try:
                 await self.memory.store_message(
@@ -103,10 +114,25 @@ class BrainPipeline:
             except Exception as e:
                 logger.error(f"Message storage failed (non-fatal): {e}")
 
+        # 6.5 Log healing issues to Supabase (non-blocking)
+        if healing.issues and conv_id:
+            for issue in healing.issues:
+                try:
+                    await self.memory.insert_healing(
+                        user_id="anthony",
+                        error_type=issue["type"],
+                        severity=issue["severity"],
+                        trigger_context=issue.get("context", ""),
+                        prevention_rule=issue.get("rule", ""),
+                    )
+                except Exception as e:
+                    logger.error(f"Healing log failed (non-fatal): {e}")
+
         elapsed = time.time() - start_time
         logger.info(
             f"[BRAIN] mode={mode.value} | model={request.model} | "
-            f"memory={len(memory_context)}chars | {elapsed:.1f}s"
+            f"memory={len(memory_context)}chars | "
+            f"healing={len(healing.issues)} issues | {elapsed:.1f}s"
         )
 
         return response
@@ -129,8 +155,18 @@ class BrainPipeline:
         mode = self.mode_detector.detect(user_message)
         logger.info(f"[STREAM] Mode: {mode.value}")
 
+        # 2.5 Healing detection (real-time friction check)
+        conv_id = request.user or None
+        recent = await self.memory.get_recent_messages(conv_id, limit=6) if conv_id else []
+        healing = self.healing.detect(user_message, mode, recent)
+        if healing.mode_override:
+            logger.info(f"[STREAM][HEALING] Mode override: {mode.value} → {healing.mode_override.value}")
+            mode = healing.mode_override
+
         # 3. Fetch memory context
         memory_context = await self.memory.get_context("anthony")
+        if healing.warning_text:
+            memory_context = memory_context + "\n\n" + healing.warning_text if memory_context else healing.warning_text
 
         # 4. Build enriched context (persona + memory + mode)
         enriched_messages = self.context_builder.build(
@@ -166,7 +202,6 @@ class BrainPipeline:
             chunk_count += 1
 
         # 6. Store exchange (non-blocking, non-fatal)
-        conv_id = request.user or None
         if conv_id:
             try:
                 await self.memory.store_message(
@@ -179,10 +214,25 @@ class BrainPipeline:
             except Exception as e:
                 logger.error(f"Stream message storage failed (non-fatal): {e}")
 
+        # 6.5 Log healing issues to Supabase (non-blocking)
+        if healing.issues and conv_id:
+            for issue in healing.issues:
+                try:
+                    await self.memory.insert_healing(
+                        user_id="anthony",
+                        error_type=issue["type"],
+                        severity=issue["severity"],
+                        trigger_context=issue.get("context", ""),
+                        prevention_rule=issue.get("rule", ""),
+                    )
+                except Exception as e:
+                    logger.error(f"Stream healing log failed (non-fatal): {e}")
+
         elapsed = time.time() - start_time
         logger.info(
             f"[STREAM] Done: {chunk_count} chunks, "
             f"{len(full_response)} chars, memory={len(memory_context)}chars, "
+            f"healing={len(healing.issues)} issues, "
             f"{elapsed:.1f}s"
         )
 

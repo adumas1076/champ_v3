@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from brain.config import load_settings
 from brain.models import ChatCompletionRequest
 from brain.pipeline import BrainPipeline
+from mind.learning import LearningLoop
 
 settings = load_settings()
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
     pipeline = BrainPipeline(settings)
     await pipeline.startup()
     app.state.pipeline = pipeline
+    app.state.learning = LearningLoop(settings)
     logger.info(
         f"CHAMP V3 Brain ready on port {settings.port} | "
         f"LiteLLM upstream: {settings.litellm_base_url}"
@@ -70,11 +72,17 @@ async def session_start(request: Request):
 
 @app.post("/v1/session/end")
 async def session_end(request: Request):
-    """End a conversation session."""
+    """End a conversation session. Triggers learning extraction."""
     pipeline: BrainPipeline = request.app.state.pipeline
+    learning: LearningLoop = request.app.state.learning
     body = await request.json()
     conversation_id = body.get("conversation_id")
     if conversation_id:
+        # Run learning extraction before ending session
+        try:
+            await learning.capture(conversation_id, pipeline.memory)
+        except Exception as e:
+            logger.error(f"Learning capture failed (non-fatal): {e}")
         await pipeline.memory.end_session(conversation_id)
     return {"status": "ok"}
 

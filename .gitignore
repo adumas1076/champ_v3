@@ -16,6 +16,11 @@ __pycache__/
 .vscode/
 .idea/
 
+# Node.js
+node_modules/
+hands/test-screenshot.png
+hands/test-wikipedia.png
+
 # OS
 .DS_Store
 Thumbs.db

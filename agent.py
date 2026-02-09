@@ -10,7 +10,7 @@ from livekit import agents
 from livekit.agents import Agent, RoomInputOptions
 from livekit.agents.voice import AgentSession, VoiceActivityVideoSampler
 from livekit.plugins import openai, noise_cancellation
-from tools import get_weather, search_web, ask_brain
+from tools import get_weather, search_web, ask_brain, start_brain_session, end_brain_session
 
 load_dotenv()
 
@@ -31,13 +31,17 @@ Rules:
   * "How do I build..." or step-by-step requests
   * Architecture, design, or technical advice
   * Complex explanations or analysis
-  The Brain has your full persona and will respond with the right energy.
+  * Questions about ME, my preferences, my tools, or my style (e.g. "what do I prefer", "what's our philosophy")
+  * Anything referencing past conversations, lessons learned, or previous errors
+  The Brain has your full persona AND memory. Only the Brain knows Anthony's preferences and history.
   When you get the Brain's response, read it back naturally — don't just dump raw text.
   Summarize code blocks verbally, explain the key points.
+- IMPORTANT: You do NOT have memory. The Brain does. If someone asks about preferences,
+  past work, or anything personal — ALWAYS route to ask_brain. Never guess.
 """
 
 SESSION_INSTRUCTION = """
-Greet Anthony briefly. You're Champ, and you just came online with your Brain wired in.
+Greet Anthony briefly. You're Champ, and you just came online with your Brain and Memory wired in.
 Keep it short and natural. Maybe mention you're ready to build.
 """
 
@@ -82,6 +86,14 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     await ctx.connect()
+
+    # Start Brain memory session
+    start_brain_session()
+
+    # End memory session when room disconnects
+    @ctx.room.on("disconnected")
+    def on_disconnect():
+        end_brain_session()
 
     await session.generate_reply(
         instructions=SESSION_INSTRUCTION,

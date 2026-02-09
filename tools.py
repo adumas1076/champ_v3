@@ -12,6 +12,40 @@ from langchain_community.tools import DuckDuckGoSearchRun
 
 BRAIN_URL = os.getenv("BRAIN_URL", "http://127.0.0.1:8100")
 
+# Session state — set by start_brain_session(), used by ask_brain
+_conversation_id = None
+
+
+def start_brain_session() -> str | None:
+    """Start a Brain session. Returns conversation_id."""
+    global _conversation_id
+    try:
+        r = requests.post(f"{BRAIN_URL}/v1/session/start", json={"channel": "voice"}, timeout=10)
+        r.raise_for_status()
+        _conversation_id = r.json().get("conversation_id")
+        logging.info(f"Brain session started: {_conversation_id}")
+        return _conversation_id
+    except Exception as e:
+        logging.error(f"Failed to start brain session: {e}")
+        return None
+
+
+def end_brain_session():
+    """End the current Brain session."""
+    global _conversation_id
+    if not _conversation_id:
+        return
+    try:
+        requests.post(
+            f"{BRAIN_URL}/v1/session/end",
+            json={"conversation_id": _conversation_id},
+            timeout=10,
+        )
+        logging.info(f"Brain session ended: {_conversation_id}")
+    except Exception as e:
+        logging.error(f"Failed to end brain session: {e}")
+    _conversation_id = None
+
 
 @function_tool()
 async def get_weather(
@@ -56,14 +90,17 @@ async def ask_brain(
     coding help, build plans, architecture advice, or anything that needs more than
     a quick voice response. The Brain uses Claude Sonnet with Champ's full persona."""
     try:
+        payload = {
+            "model": "claude-sonnet",
+            "messages": [{"role": "user", "content": question}],
+            "stream": False,
+            "max_tokens": 1000,
+        }
+        if _conversation_id:
+            payload["user"] = _conversation_id
         response = requests.post(
             f"{BRAIN_URL}/v1/chat/completions",
-            json={
-                "model": "claude-sonnet",
-                "messages": [{"role": "user", "content": question}],
-                "stream": False,
-                "max_tokens": 1000,
-            },
+            json=payload,
             timeout=60,
         )
         response.raise_for_status()

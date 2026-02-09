@@ -48,10 +48,11 @@ class ContextBuilder:
         original_messages: list[ChatMessage],
         persona: str,
         mode: OutputMode,
+        memory_context: str = "",
     ) -> list[ChatMessage]:
         """Build the enriched message list."""
-        # Build system prompt: persona + mode
-        system_content = persona + MODE_INSTRUCTIONS[mode]
+        # Build system prompt: persona + memory + mode
+        system_content = persona + memory_context + MODE_INSTRUCTIONS[mode]
 
         # Strip existing system messages
         conversation_messages = [

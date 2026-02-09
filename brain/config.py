@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     litellm_api_key: str = Field(alias="LITELLM_MASTER_KEY")
     default_model: str = "claude-sonnet"
 
+    # --- Supabase Memory ---
+    supabase_url: str = Field(default="", alias="SUPABASE_URL")
+    supabase_service_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
+
     # --- Persona ---
     persona_dir: Path = Path(__file__).resolve().parent.parent / "persona"
     default_persona: str = "champ_persona_v1.6.1.md"

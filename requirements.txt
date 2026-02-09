@@ -14,3 +14,6 @@ uvicorn>=0.34.0
 httpx>=0.28.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
+
+# ---- Phase 3: Memory (Supabase) ----
+supabase>=2.11.0,<3.0

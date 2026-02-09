@@ -54,7 +54,29 @@ app = FastAPI(
 # ---- Health Check ----
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "champ-v3-brain", "phase": 2}
+    return {"status": "ok", "service": "champ-v3-brain", "phase": 2, "memory": True}
+
+
+# ---- Session Lifecycle ----
+@app.post("/v1/session/start")
+async def session_start(request: Request):
+    """Start a new conversation session. Returns conversation_id."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    channel = body.get("channel", "voice")
+    conversation_id = await pipeline.memory.start_session(channel=channel)
+    return {"conversation_id": conversation_id}
+
+
+@app.post("/v1/session/end")
+async def session_end(request: Request):
+    """End a conversation session."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    body = await request.json()
+    conversation_id = body.get("conversation_id")
+    if conversation_id:
+        await pipeline.memory.end_session(conversation_id)
+    return {"status": "ok"}
 
 
 # ---- Chat Completions (OpenAI-compatible) ----

@@ -8,6 +8,7 @@
 # "Built to build. Born to create."
 
 import asyncio
+import json as _json
 import logging
 import sys
 import time
@@ -332,9 +333,49 @@ class EarsListener:
         finally:
             keyboard.unhook_all()
 
+    async def _start_health_server(self, port: int = 8101) -> None:
+        """Start a lightweight TCP health check server (no extra deps)."""
+        async def handle_client(reader, writer):
+            try:
+                await reader.read(4096)  # Consume HTTP request
+                body = _json.dumps({
+                    "status": "ok",
+                    "service": "champ-v3-ears",
+                    "state": self.state,
+                    "room": self.settings.room_name,
+                    "connected": self.bridge.is_connected,
+                })
+                response = (
+                    f"HTTP/1.1 200 OK\r\n"
+                    f"Content-Type: application/json\r\n"
+                    f"Content-Length: {len(body)}\r\n"
+                    f"\r\n{body}"
+                )
+                writer.write(response.encode())
+                await writer.drain()
+            except Exception:
+                pass
+            finally:
+                writer.close()
+
+        try:
+            server = await asyncio.start_server(
+                handle_client, "127.0.0.1", port
+            )
+            logger.info(
+                f"Ears health server on http://127.0.0.1:{port}/health"
+            )
+            self._health_server = server
+        except Exception as e:
+            logger.warning(f"Failed to start health server: {e}")
+
     async def run(self) -> None:
         """Main loop. Opens mic stream, processes frames by state."""
         self._running = True
+
+        # Start health check endpoint
+        await self._start_health_server()
+
         logger.info(
             f"Ears listener starting | device={self.settings.audio_device} | "
             f"model={self.settings.wake_model} | "

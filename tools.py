@@ -21,6 +21,9 @@ BRAIN_URL = os.getenv("BRAIN_URL", "http://127.0.0.1:8100")
 # Session state — set by start_brain_session(), used by ask_brain
 _conversation_id = None
 
+# Self Mode run tracking — for proactive notifications
+_pending_run_ids: set[str] = set()
+
 
 def start_brain_session() -> str | None:
     """Start a Brain session. Returns conversation_id."""
@@ -247,3 +250,171 @@ async def create_file(
     except Exception as e:
         logging.error(f"create_file error: {e}")
         return f"File creation error: {e}"
+
+
+# ============================================
+# SELF MODE TOOLS -- Brick 8.5
+# ============================================
+
+@function_tool()
+async def go_do(
+    context: RunContext,
+    task: str,
+) -> str:
+    """Hand off a task to Self Mode for autonomous execution.
+    Use this when the user asks you to build, create, write, or make something
+    that requires multiple steps -- like a script, tool, data pipeline, scraper, etc.
+    Self Mode will plan, execute, review, fix, and deliver the result autonomously.
+    Returns a run ID so you can check on progress later with check_task."""
+    try:
+        response = requests.post(
+            f"{BRAIN_URL}/v1/self_mode/submit",
+            json={"task": task},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        run_id = data.get("run_id", "unknown")
+        _pending_run_ids.add(run_id)
+        logging.info(f"Self Mode task submitted: {run_id} for '{task[:60]}'")
+        return (
+            f"Got it -- I'm on it. Self Mode run started: {run_id}. "
+            f"I'll plan, build, test, and deliver this autonomously. "
+            f"You can ask me to check on it anytime."
+        )
+    except Exception as e:
+        logging.error(f"go_do error: {e}")
+        return f"Failed to start Self Mode task: {e}. Brain might be offline."
+
+
+@function_tool()
+async def check_task(
+    context: RunContext,
+    run_id: str,
+) -> str:
+    """Check the status of a Self Mode task that was handed off earlier.
+    Use this when the user asks about the progress of a task you handed off."""
+    try:
+        response = requests.get(
+            f"{BRAIN_URL}/v1/self_mode/status/{run_id}",
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        status = data.get("db_status") or data.get("in_memory_status", "unknown")
+        step = data.get("current_step", "?")
+        result_pack = data.get("result_pack")
+
+        step_names = [
+            "receive", "plan", "approve", "execute",
+            "review", "fix", "package", "learn", "deliver",
+        ]
+        step_label = step_names[step] if isinstance(step, int) and step < len(step_names) else str(step)
+
+        summary = f"Run {run_id}: status={status}, step={step_label}"
+
+        if result_pack:
+            rp_status = result_pack.get("status", "")
+            deliverables = result_pack.get("deliverables", "")
+            issues = result_pack.get("issues_hit", "")
+            summary += f"\nResult: {rp_status}"
+            if deliverables:
+                summary += f"\nDeliverables: {deliverables[:500]}"
+            if issues and issues != "No issues":
+                summary += f"\nIssues: {issues[:300]}"
+
+        return summary
+    except requests.exceptions.HTTPError as e:
+        if e.response and e.response.status_code == 404:
+            return f"Run {run_id} not found. It may have expired or the ID might be wrong."
+        return f"Error checking task: {e}"
+    except Exception as e:
+        logging.error(f"check_task error: {e}")
+        return f"Error checking task status: {e}"
+
+
+@function_tool()
+async def approve_task(
+    context: RunContext,
+    run_id: str,
+) -> str:
+    """Approve a Self Mode task that is waiting for approval.
+    Use this when the user says to approve a task, go ahead, or gives the green light."""
+    try:
+        response = requests.post(
+            f"{BRAIN_URL}/v1/self_mode/approve/{run_id}",
+            timeout=30,
+        )
+        if response.status_code == 404:
+            return f"Run {run_id} not found."
+        if response.status_code == 400:
+            data = response.json()
+            return f"Can't approve: {data.get('error', 'unknown reason')}"
+        response.raise_for_status()
+        return f"Approved. Task {run_id} is now resuming execution."
+    except Exception as e:
+        logging.error(f"approve_task error: {e}")
+        return f"Failed to approve task: {e}"
+
+
+@function_tool()
+async def resume_task(
+    context: RunContext,
+    run_id: str,
+) -> str:
+    """Resume a Self Mode task that crashed or got blocked.
+    Use this when the user asks to retry, resume, or continue a failed or stuck task."""
+    try:
+        response = requests.post(
+            f"{BRAIN_URL}/v1/self_mode/resume/{run_id}",
+            timeout=30,
+        )
+        if response.status_code == 404:
+            return f"Run {run_id} not found."
+        if response.status_code == 400:
+            return f"Can't resume: {response.json().get('error', 'unknown')}"
+        if response.status_code == 409:
+            return f"Task {run_id} is already running."
+        response.raise_for_status()
+        data = response.json()
+        return f"Resuming task {run_id} from step {data.get('from_step', '?')}."
+    except Exception as e:
+        logging.error(f"resume_task error: {e}")
+        return f"Failed to resume task: {e}"
+
+
+# ============================================
+# PROACTIVE NOTIFICATION — Polling Helper
+# ============================================
+
+def poll_completed_runs() -> list[dict]:
+    """
+    Check all pending run_ids for completion.
+    Returns list of completed run dicts and removes them from pending.
+    Called by the notification coroutine in agent.py.
+    """
+    global _pending_run_ids
+    completed = []
+    to_remove = set()
+    for run_id in list(_pending_run_ids):
+        try:
+            response = requests.get(
+                f"{BRAIN_URL}/v1/self_mode/status/{run_id}",
+                timeout=5,
+            )
+            if response.status_code != 200:
+                continue
+            data = response.json()
+            db_status = data.get("db_status", "")
+            in_memory = data.get("in_memory_status", "")
+            # Terminal states
+            if db_status in (
+                "complete", "partial", "failed", "blocked",
+            ) or in_memory in ("finished", "error"):
+                completed.append(data)
+                to_remove.add(run_id)
+        except Exception:
+            pass  # Network error, skip this tick
+    _pending_run_ids -= to_remove
+    return completed

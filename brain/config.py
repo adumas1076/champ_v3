@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     persona_dir: Path = Path(__file__).resolve().parent.parent / "persona"
     default_persona: str = "champ_persona_v1.6.1.md"
 
+    # --- Ears Sidecar ---
+    ears_health_url: str = Field(
+        default="http://127.0.0.1:8101/health", alias="EARS_HEALTH_URL"
+    )
+
     # --- Logging ---
     log_level: str = Field(default="DEBUG", alias="CHAMP_LOG_LEVEL")
 

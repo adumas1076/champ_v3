@@ -333,3 +333,85 @@ class SupabaseMemory:
             logger.debug(f"Healing record inserted: {error_type}")
         except Exception as e:
             logger.error(f"Healing insert failed: {e}")
+
+    # ---- Self Mode (Brick 8) ----
+
+    async def upsert_self_mode_run(
+        self,
+        run_id: str,
+        goal_card: dict,
+        current_step: int,
+        subtasks: list,
+        result_pack: Optional[dict] = None,
+        status: str = "queued",
+    ) -> None:
+        """Upsert a self_mode_runs record for state persistence."""
+        if not self._client:
+            return
+
+        try:
+            record = {
+                "id": run_id,
+                "goal_card": goal_card,
+                "current_step": current_step,
+                "subtasks": subtasks,
+                "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if result_pack is not None:
+                record["result_pack"] = result_pack
+
+            await self._client.table("self_mode_runs").upsert(
+                record, on_conflict="id"
+            ).execute()
+            logger.debug(f"Self mode run upserted: {run_id} step={current_step}")
+        except Exception as e:
+            logger.error(f"Self mode run upsert failed: {e}")
+
+    async def get_queued_self_mode_runs(self) -> list[dict]:
+        """Fetch all queued self_mode_runs, oldest first."""
+        if not self._client:
+            return []
+
+        try:
+            result = await self._client.table("self_mode_runs").select(
+                "*"
+            ).eq(
+                "status", "queued"
+            ).order(
+                "created_at", desc=False
+            ).execute()
+            return result.data or []
+        except Exception as e:
+            logger.error(f"Failed to fetch queued self mode runs: {e}")
+            return []
+
+    async def update_self_mode_run_status(
+        self, run_id: str, status: str
+    ) -> None:
+        """Update just the status of a self_mode_run."""
+        if not self._client:
+            return
+
+        try:
+            await self._client.table("self_mode_runs").update({
+                "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", run_id).execute()
+            logger.debug(f"Self mode run {run_id} status → {status}")
+        except Exception as e:
+            logger.error(f"Self mode run status update failed: {e}")
+
+    async def get_self_mode_run(self, run_id: str) -> Optional[dict]:
+        """Fetch a single self_mode_run by ID."""
+        if not self._client:
+            return None
+
+        try:
+            result = await self._client.table("self_mode_runs").select(
+                "*"
+            ).eq("id", run_id).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Failed to fetch self mode run {run_id}: {e}")
+            return None

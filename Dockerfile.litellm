@@ -1,0 +1,11 @@
+# ============================================
+# CHAMP V3 — LiteLLM Proxy
+# Multi-model router: Claude + Gemini + GPT-4o
+# ============================================
+FROM ghcr.io/berriai/litellm:main-latest
+
+COPY litellm_config.yaml /app/config.yaml
+
+EXPOSE 4001
+
+CMD ["--config", "/app/config.yaml", "--port", "4001"]

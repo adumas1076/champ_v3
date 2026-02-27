@@ -1,0 +1,8 @@
+# CHAMP V3 — Voice Agent dependencies
+livekit-agents>=1.0.0
+livekit-plugins-openai>=1.0.0
+livekit-plugins-silero>=1.0.0
+livekit-plugins-noise-cancellation>=1.0.0
+python-dotenv>=1.0.0
+duckduckgo-search>=7.0.0
+requests>=2.32.0

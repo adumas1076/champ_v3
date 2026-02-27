@@ -1,0 +1,54 @@
+# Secrets
+.env
+.env.*
+KMS/
+
+# Virtual env
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Node modules (hands has its own)
+hands/node_modules/
+hands/package-lock.json
+hands/screenshots/
+
+# Output
+output/
+
+# Tests and gates
+tests/
+gate_test*.py
+migrate_self_mode.py
+
+# Ears (local only — needs hardware mic)
+ears/
+
+# Frontend (separate Vercel deploy)
+frontend/
+
+# Docs
+*.md
+LICENSE
+
+# Reference
+reference/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+nul

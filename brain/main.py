@@ -9,11 +9,13 @@
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import requests
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from brain.config import load_settings
@@ -65,6 +67,14 @@ app = FastAPI(
     description="Phase 2: Persona + Mode Detection + LiteLLM Router",
     version="3.0.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -434,6 +444,90 @@ async def list_models():
             {"id": "gpt-4o", "object": "model", "created": 0, "owned_by": "champ-v3-brain"},
         ],
     }
+
+
+# ---- LiveKit Dispatch & Token (Brick 9 — Frontend) ----
+
+@app.post("/v1/token")
+async def livekit_token(request: Request):
+    """Generate a LiveKit token for the frontend to join a room."""
+    from livekit.api import AccessToken, VideoGrants
+
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+
+    identity = body.get("identity", f"user-{os.urandom(4).hex()}")
+    name = body.get("name", "User")
+    room = body.get("room", "champ-room")
+
+    api_key = os.getenv("LIVEKIT_API_KEY")
+    api_secret = os.getenv("LIVEKIT_API_SECRET")
+
+    if not api_key or not api_secret:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "LiveKit credentials not configured"},
+        )
+
+    token = (
+        AccessToken(api_key=api_key, api_secret=api_secret)
+        .with_identity(identity)
+        .with_name(name)
+        .with_grants(VideoGrants(room_join=True, room=room))
+    )
+
+    jwt = token.to_jwt()
+    logger.info(f"[TOKEN] Generated for {identity} in room {room}")
+
+    return {
+        "token": jwt,
+        "identity": identity,
+        "room": room,
+        "serverUrl": os.getenv("LIVEKIT_URL", ""),
+    }
+
+
+@app.post("/v1/dispatch")
+async def livekit_dispatch(request: Request):
+    """Dispatch the CHAMP voice agent to a LiveKit room."""
+    from livekit.api import LiveKitAPI
+    from livekit.api.agent_dispatch_service import CreateAgentDispatchRequest
+
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+
+    room = body.get("room", "champ-room")
+    agent_name = body.get("agent", "champ")
+
+    livekit_url = os.getenv("LIVEKIT_URL")
+    api_key = os.getenv("LIVEKIT_API_KEY")
+    api_secret = os.getenv("LIVEKIT_API_SECRET")
+
+    if not all([livekit_url, api_key, api_secret]):
+        return JSONResponse(
+            status_code=500,
+            content={"error": "LiveKit credentials not configured"},
+        )
+
+    try:
+        api = LiveKitAPI(url=livekit_url, api_key=api_key, api_secret=api_secret)
+        req = CreateAgentDispatchRequest(room=room, agent_name=agent_name)
+        dispatch = await api.agent_dispatch.create_dispatch(req)
+        await api.aclose()
+
+        logger.info(f"[DISPATCH] Agent '{agent_name}' dispatched to room '{room}'")
+
+        return {
+            "success": True,
+            "room": room,
+            "agent": agent_name,
+            "dispatch_id": dispatch.id if hasattr(dispatch, "id") else None,
+        }
+
+    except Exception as e:
+        logger.error(f"[DISPATCH] Failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)},
+        )
 
 
 if __name__ == "__main__":

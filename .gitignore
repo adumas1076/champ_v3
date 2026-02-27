@@ -3,6 +3,11 @@ venv/
 
 # Environment variables (secrets)
 .env
+.env.*
+!.env.example
+
+# Key management (secrets)
+KMS/
 
 # Python cache
 __pycache__/
@@ -18,12 +23,22 @@ __pycache__/
 
 # Node.js
 node_modules/
+hands/package-lock.json
 hands/test-screenshot.png
 hands/test-wikipedia.png
 
 # Hands output
 hands/screenshots/
 output/
+
+# Personal data
+brain/champ_memory_extract.json
+
+# Local reference repos
+reference/
+
+# Logs
+*.log
 
 # OS
 .DS_Store

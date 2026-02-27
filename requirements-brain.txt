@@ -1,0 +1,10 @@
+# CHAMP V3 — Brain service dependencies
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+httpx>=0.27.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+python-dotenv>=1.0.0
+supabase>=2.9.0
+requests>=2.32.0
+livekit-api>=1.0.0

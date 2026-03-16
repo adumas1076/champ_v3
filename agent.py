@@ -1,7 +1,7 @@
 # ============================================
-# CHAMP V3 — Phase 1: Friday Build
+# CHAMP V3 — Voice Pipeline (Friday Pattern)
 # OpenAI Realtime Model (Voice + Vision + Tools)
-# Pattern: reference/friday_jarvis-main + champ_v1
+# Entrypoint: session.start() → ctx.connect() → generate_reply()
 # ============================================
 
 import asyncio
@@ -10,15 +10,15 @@ import logging
 from dotenv import load_dotenv
 
 from livekit import agents
-from livekit.agents import Agent, RoomInputOptions
-from livekit.agents.voice import AgentSession, VoiceActivityVideoSampler
-from livekit.plugins import openai, noise_cancellation
+from livekit.agents import AgentSession, Agent, RoomInputOptions
+from livekit.plugins import openai
 from tools import (
-    get_weather, search_web, ask_brain,
+    get_weather, ask_brain,
     start_brain_session, end_brain_session,
     browse_url, take_screenshot, fill_web_form, run_code, create_file,
     go_do, check_task, approve_task, resume_task,
     poll_completed_runs,
+    google_search, control_desktop, read_screen,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,15 +33,30 @@ You are direct, helpful, and have a good sense of humor.
 
 CRITICAL — You have REAL tools. You MUST use them. NEVER pretend or guess.
 
-Tools you MUST use (non-negotiable):
+BROWSER TOOLS (uses the user's REAL browser — logged in, cookies, everything):
 - YOU HAVE A REAL BROWSER. When asked to visit, go to, open, check, or browse ANY website,
   you MUST call browse_url. You CAN browse the internet. Never say "I can't access websites."
+- YOU CAN GOOGLE SEARCH. Use google_search to search Google with the user's real account.
+  Personalized results. No bot detection. Use this instead of search_web for better results.
+- YOU CAN TAKE SCREENSHOTS. When asked to screenshot a page, MUST call take_screenshot with a URL.
+  For desktop screenshots, call take_screenshot with no URL.
+- YOU CAN FILL FORMS. When asked to fill out, sign up, or log into a website, MUST call fill_web_form.
+  This uses human-like typing in the real browser — undetectable.
+
+DESKTOP TOOLS (controls the user's ACTUAL screen — any app, any window):
+- YOU CAN CONTROL THE DESKTOP. Use control_desktop to open apps, click buttons, type text,
+  press keyboard shortcuts, scroll, take desktop screenshots. Examples:
+  "open Excel" / "open Spotify" / "type Hello" / "press ctrl+s" / "click Save in Notepad"
+- YOU CAN READ THE SCREEN. Use read_screen to see what UI elements are visible on screen
+  or in a specific window. Use this BEFORE clicking to know what's available to interact with.
+- When asked to do something in a desktop app (not a website), use control_desktop.
+  When asked about a website, use browse_url or google_search.
+
+CODE TOOLS:
 - YOU CAN RUN CODE. When asked to run, execute, or test ANY code, you MUST call run_code.
   Even for simple code like print(2+2) — ALWAYS call run_code. Never guess the output.
 - YOU CAN CREATE FILES. When asked to write, create, or save a file, MUST call create_file.
   Confirm the filename and path after saving.
-- YOU CAN TAKE SCREENSHOTS. When asked to screenshot or capture a page, MUST call take_screenshot.
-- YOU CAN FILL FORMS. When asked to fill out a web form, MUST call fill_web_form.
 
 Autonomous tasks (Self Mode):
 - YOU CAN BUILD THINGS AUTONOMOUSLY. When the user asks you to build, create, write, or make
@@ -59,7 +74,7 @@ Autonomous tasks (Self Mode):
 
 Other tools:
 - Use get_weather when asked about weather.
-- Use search_web when asked for current information you don't have.
+- Use google_search when asked for current information you don't have.
 - Use ask_brain for deeper thinking: coding questions, build plans, architecture, complex analysis,
   questions about Anthony's preferences/tools/style, past conversations, or lessons learned.
   The Brain has your full persona AND memory. Only the Brain knows Anthony's preferences and history.
@@ -73,13 +88,13 @@ General rules:
 """
 
 SESSION_INSTRUCTION = """
-Greet Anthony briefly. You're Champ -- Brain, Memory, Hands, and Self Mode all wired in.
-Keep it short and natural. You can browse the web, run code, create files, and build things autonomously.
+Greet Anthony briefly. You're Champ -- Brain, Memory, Hands, Desktop Control, and Self Mode all wired in.
+Keep it short and natural. You can browse the real web, control desktop apps, Google search, run code, create files, and build things autonomously.
 """
 
 
 # ============================================
-# AGENT CLASS
+# AGENT CLASS (Friday pattern + V3 tools)
 # ============================================
 class Friday(Agent):
     def __init__(self) -> None:
@@ -91,7 +106,6 @@ class Friday(Agent):
             ),
             tools=[
                 get_weather,
-                search_web,
                 ask_brain,
                 browse_url,
                 take_screenshot,
@@ -102,45 +116,40 @@ class Friday(Agent):
                 check_task,
                 approve_task,
                 resume_task,
+                google_search,
+                control_desktop,
+                read_screen,
             ],
         )
 
 
 # ============================================
-# ENTRYPOINT
+# ENTRYPOINT (Friday pattern — proven order)
 # ============================================
 async def entrypoint(ctx: agents.JobContext):
-    session = AgentSession(
-        video_sampler=VoiceActivityVideoSampler(
-            speaking_fps=5.0,   # 5 frames/sec while talking (was 1.0)
-            silent_fps=2.0,     # 2 frames/sec while silent (was 0.3)
-        ),
-    )
+    session = AgentSession()
+
+    start_brain_session()
+
+    @ctx.room.on("disconnected")
+    def on_disconnect():
+        end_brain_session()
 
     await session.start(
         room=ctx.room,
         agent=Friday(),
         room_input_options=RoomInputOptions(
             video_enabled=True,
-            noise_cancellation=noise_cancellation.BVC(),
+            text_enabled=True,
         ),
     )
 
     await ctx.connect()
 
-    # Start Brain memory session
-    start_brain_session()
-
-    # End memory session when room disconnects
-    @ctx.room.on("disconnected")
-    def on_disconnect():
-        end_brain_session()
-
     await session.generate_reply(
         instructions=SESSION_INSTRUCTION,
     )
 
-    # Start proactive notification polling
     asyncio.create_task(_notify_completed_tasks(session))
 
 
@@ -188,4 +197,7 @@ async def _notify_completed_tasks(session: AgentSession):
 
 
 if __name__ == "__main__":
-    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint))
+    agents.cli.run_app(agents.WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="champ",
+    ))

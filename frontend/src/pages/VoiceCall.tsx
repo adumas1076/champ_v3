@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -7,12 +7,80 @@ import {
   DisconnectButton,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
+import { RoomEvent, Track } from "livekit-client";
 
 interface VoiceCallProps {
   brainUrl: string;
 }
 
 const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || "";
+
+// ─── Avatar Video Overlay ──────────────────────────────────────────────────
+
+function AvatarVideoOverlay() {
+  const room = useRoomContext();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [hasAvatar, setHasAvatar] = useState(false);
+
+  useEffect(() => {
+    if (!room) return;
+
+    const checkForAvatar = () => {
+      for (const p of room.remoteParticipants.values()) {
+        for (const pub of p.trackPublications.values()) {
+          if (
+            pub.source === Track.Source.Camera &&
+            pub.track &&
+            !pub.isMuted
+          ) {
+            if (videoRef.current) {
+              pub.track.attach(videoRef.current);
+            }
+            setHasAvatar(true);
+            return;
+          }
+        }
+      }
+      setHasAvatar(false);
+    };
+
+    checkForAvatar();
+    room.on(RoomEvent.TrackSubscribed, checkForAvatar);
+    room.on(RoomEvent.TrackUnsubscribed, checkForAvatar);
+
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, checkForAvatar);
+      room.off(RoomEvent.TrackUnsubscribed, checkForAvatar);
+      if (videoRef.current) {
+        const el = videoRef.current;
+        for (const p of room.remoteParticipants.values()) {
+          for (const pub of p.trackPublications.values()) {
+            pub.track?.detach(el);
+          }
+        }
+      }
+    };
+  }, [room]);
+
+  if (!hasAvatar) return null;
+
+  return (
+    <div className="mt-4 rounded-xl overflow-hidden border-2 border-green-500/50 shadow-lg shadow-green-500/20">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-64 h-64 object-cover bg-black"
+      />
+      <div className="bg-green-500/20 text-green-400 text-xs text-center py-1 font-mono">
+        AVATAR LIVE
+      </div>
+    </div>
+  );
+}
+
+// ─── Call Controls ────────────────────────────────────────────────────────────
 
 function CallControls() {
   const room = useRoomContext();
@@ -44,6 +112,9 @@ function CallControls() {
           ? "Connecting..."
           : "Disconnected"}
       </p>
+
+      {/* Avatar video shows here when a video track is detected */}
+      <AvatarVideoOverlay />
 
       <div className="flex items-center gap-4">
         <button

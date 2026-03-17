@@ -93,8 +93,14 @@ class BrainPipeline:
             mode=mode,
             memory_context=memory_context,
         )
+        # Auto-route images to vision model (Gemini Flash)
+        model_override = {}
+        if self._has_images(request):
+            model_override = {"model": "gemini-flash"}
+            logger.info("[BRAIN] Image detected — routing to Gemini Flash (vision)")
+
         enriched_request = request.model_copy(
-            update={"messages": enriched_messages}
+            update={"messages": enriched_messages, **model_override}
         )
 
         # 5. Forward to LiteLLM
@@ -175,8 +181,14 @@ class BrainPipeline:
             mode=mode,
             memory_context=memory_context,
         )
+        # Auto-route images to vision model (Gemini Flash)
+        model_override = {}
+        if self._has_images(request):
+            model_override = {"model": "gemini-flash"}
+            logger.info("[STREAM] Image detected — routing to Gemini Flash (vision)")
+
         enriched_request = request.model_copy(
-            update={"messages": enriched_messages}
+            update={"messages": enriched_messages, **model_override}
         )
 
         # 5. Stream from LiteLLM
@@ -237,7 +249,10 @@ class BrainPipeline:
         )
 
     def _extract_user_message(self, request: ChatCompletionRequest) -> str:
-        """Pull the latest user message text from the request."""
+        """Pull the latest user message text from the request.
+        Extracts text parts from multimodal messages.
+        Image parts are preserved in the original message for LiteLLM forwarding.
+        """
         for msg in reversed(request.messages):
             if msg.role == "user":
                 if isinstance(msg.content, str):
@@ -250,3 +265,12 @@ class BrainPipeline:
                     ]
                     return " ".join(text_parts)
         return ""
+
+    def _has_images(self, request: ChatCompletionRequest) -> bool:
+        """Check if the request contains image content."""
+        for msg in request.messages:
+            if isinstance(msg.content, list):
+                for part in msg.content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        return True
+        return False

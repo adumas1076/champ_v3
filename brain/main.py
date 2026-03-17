@@ -11,10 +11,14 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import requests
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -176,6 +180,103 @@ async def chat_completions(request: Request):
                 status_code=500,
                 content={"error": {"message": str(e)}},
             )
+
+
+# ---- File Upload & Processing (Brick 10) ----
+
+# In-memory file cache: file_id -> FileProcessResult
+_file_cache: dict = {}
+
+
+@app.post("/v1/upload")
+async def upload_file(
+    request: Request,
+    file: UploadFile = File(...),
+    message: str = Form(default=""),
+):
+    """
+    Upload a file for processing. Extracts content based on file type.
+    Returns extracted text, metadata, and a file_id for use in chat messages.
+
+    Supports: PDF, DOCX, PPTX, XLSX, CSV, images, audio, video, archives,
+    email, HTML, code files, JSON, YAML, XML, TOML, Parquet, SQLite, and more.
+    """
+    from brain.file_processor import process_file
+    from uuid import uuid4
+
+    file_bytes = await file.read()
+    filename = file.filename or "unknown"
+    content_type = file.content_type
+
+    result = await process_file(file_bytes, filename, content_type)
+
+    # Store in cache with an ID
+    file_id = f"file-{uuid4().hex[:8]}"
+    _file_cache[file_id] = result
+
+    logger.info(
+        f"[UPLOAD] {filename} -> {result.file_type} | "
+        f"{len(result.text)} chars | file_id={file_id}"
+    )
+
+    response = {
+        "file_id": file_id,
+        "filename": filename,
+        "file_type": result.file_type,
+        "text_length": len(result.text),
+        "text_preview": result.text[:500],
+        "metadata": result.metadata,
+        "has_image": result.image_b64 is not None,
+    }
+
+    # If a message was included, run it through the chat pipeline with the file content
+    if message.strip():
+        pipeline: BrainPipeline = request.app.state.pipeline
+
+        # Build message with file context
+        file_context = f"[Uploaded file: {filename}]\n\n{result.text[:10000]}"
+
+        if result.image_b64 and result.mime_type:
+            # For images, send as multimodal message to use vision model
+            messages_content = [
+                {"type": "text", "text": f"{message}\n\n{file_context}"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{result.mime_type};base64,{result.image_b64}"
+                    },
+                },
+            ]
+            chat_messages = [{"role": "user", "content": messages_content}]
+            model = "gemini-flash"  # Route images to vision model
+        else:
+            chat_messages = [
+                {"role": "user", "content": f"{message}\n\n{file_context}"}
+            ]
+            model = "claude-sonnet"
+
+        from brain.models import ChatCompletionRequest, ChatMessage
+        chat_request = ChatCompletionRequest(
+            model=model,
+            messages=[ChatMessage(**m) for m in chat_messages],
+        )
+        chat_response = await pipeline.handle_request(chat_request)
+        response["chat_response"] = chat_response.model_dump()
+
+    return JSONResponse(content=response)
+
+
+@app.get("/v1/files/{file_id}")
+async def get_file(file_id: str):
+    """Retrieve processed file content by file_id."""
+    if file_id not in _file_cache:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"File {file_id} not found"},
+        )
+
+    result = _file_cache[file_id]
+    return JSONResponse(content=result.to_dict())
 
 
 # ---- Self Mode Endpoints (Brick 8.5) ----
@@ -431,6 +532,102 @@ async def ears_status():
         return {"ears": "unhealthy", "status_code": resp.status_code}
     except Exception:
         return {"ears": "offline", "detail": "Ears health endpoint unreachable"}
+
+
+# ---- Memory Read Endpoints (for Frontend) ----
+
+@app.get("/v1/memory/profile")
+async def get_memory_profile(request: Request, user_id: str = "anthony"):
+    """Get all profile entries for a user."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.memory._client:
+        return {"entries": [], "count": 0}
+
+    try:
+        result = await pipeline.memory._client.table("mem_profile").select(
+            "key, value, category, confidence, updated_at"
+        ).eq("user_id", user_id).order("updated_at", desc=True).execute()
+        entries = result.data or []
+        return {"entries": entries, "count": len(entries)}
+    except Exception as e:
+        logger.error(f"[MEMORY] Profile fetch failed: {e}")
+        return {"entries": [], "count": 0, "error": str(e)}
+
+
+@app.get("/v1/memory/lessons")
+async def get_memory_lessons(request: Request, user_id: str = "anthony"):
+    """Get all lessons for a user."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.memory._client:
+        return {"entries": [], "count": 0}
+
+    try:
+        result = await pipeline.memory._client.table("mem_lessons").select(
+            "id, lesson, tags, status, times_seen, created_at"
+        ).eq("user_id", user_id).order("created_at", desc=True).execute()
+        entries = result.data or []
+        return {"entries": entries, "count": len(entries)}
+    except Exception as e:
+        logger.error(f"[MEMORY] Lessons fetch failed: {e}")
+        return {"entries": [], "count": 0, "error": str(e)}
+
+
+@app.get("/v1/memory/healing")
+async def get_memory_healing(request: Request, user_id: str = "anthony"):
+    """Get all healing records for a user."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.memory._client:
+        return {"entries": [], "count": 0}
+
+    try:
+        result = await pipeline.memory._client.table("mem_healing").select(
+            "id, error_type, severity, trigger_context, prevention_rule, resolved, created_at"
+        ).eq("user_id", user_id).order("created_at", desc=True).execute()
+        entries = result.data or []
+        return {"entries": entries, "count": len(entries)}
+    except Exception as e:
+        logger.error(f"[MEMORY] Healing fetch failed: {e}")
+        return {"entries": [], "count": 0, "error": str(e)}
+
+
+@app.get("/v1/conversations")
+async def get_conversations(request: Request, limit: int = 20):
+    """Get recent conversations."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.memory._client:
+        return {"conversations": [], "count": 0}
+
+    try:
+        result = await pipeline.memory._client.table("conversations").select(
+            "id, channel, started_at, ended_at"
+        ).order("started_at", desc=True).limit(limit).execute()
+        conversations = result.data or []
+        return {"conversations": conversations, "count": len(conversations)}
+    except Exception as e:
+        logger.error(f"[MEMORY] Conversations fetch failed: {e}")
+        return {"conversations": [], "count": 0, "error": str(e)}
+
+
+@app.get("/v1/conversations/{conversation_id}/messages")
+async def get_conversation_messages(
+    conversation_id: str, request: Request, limit: int = 50
+):
+    """Get messages from a specific conversation."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.memory._client:
+        return {"messages": [], "count": 0}
+
+    try:
+        result = await pipeline.memory._client.table("messages").select(
+            "id, role, content, mode, model_used, created_at"
+        ).eq(
+            "conversation_id", conversation_id
+        ).order("created_at", desc=False).limit(limit).execute()
+        messages = result.data or []
+        return {"messages": messages, "count": len(messages)}
+    except Exception as e:
+        logger.error(f"[MEMORY] Messages fetch failed: {e}")
+        return {"messages": [], "count": 0, "error": str(e)}
 
 
 # ---- Models endpoint (satisfies OpenAI client) ----

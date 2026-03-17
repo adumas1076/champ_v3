@@ -1,11 +1,16 @@
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import VoiceCall from "./pages/VoiceCall";
+import AvatarLab from "./pages/AvatarLab";
 
 const BRAIN_URL = import.meta.env.VITE_BRAIN_URL || "http://127.0.0.1:8100";
 
 function Nav() {
   const location = useLocation();
+
+  // Hide nav on full-screen pages
+  if (location.pathname === "/call" || location.pathname === "/avatar-lab") return null;
+
   const isActive = (path: string) =>
     location.pathname === path
       ? "text-white border-champ-accent"
@@ -31,15 +36,25 @@ function Nav() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const isFullScreen = location.pathname === "/call" || location.pathname === "/avatar-lab";
+
   return (
     <div className="min-h-screen bg-champ-bg text-white">
       <Nav />
-      <main className="p-6 max-w-5xl mx-auto">
+      {isFullScreen ? (
         <Routes>
-          <Route path="/" element={<Dashboard brainUrl={BRAIN_URL} />} />
           <Route path="/call" element={<VoiceCall brainUrl={BRAIN_URL} />} />
+          <Route path="/avatar-lab" element={<AvatarLab />} />
         </Routes>
-      </main>
+      ) : (
+        <main className="p-6 max-w-5xl mx-auto">
+          <Routes>
+            <Route path="/" element={<Dashboard brainUrl={BRAIN_URL} />} />
+            <Route path="/call" element={<VoiceCall brainUrl={BRAIN_URL} />} />
+          </Routes>
+        </main>
+      )}
     </div>
   );
 }

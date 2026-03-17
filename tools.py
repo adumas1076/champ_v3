@@ -11,8 +11,25 @@ import os
 from pathlib import Path
 from livekit.agents import function_tool, RunContext
 import requests
-from langchain_community.tools import DuckDuckGoSearchRun
-from hands.bridge import browse as hands_browse, take_screenshot as hands_screenshot, fill_form as hands_fill_form
+# Puppeteer removed — stealth browser (nodriver) is the only browser now
+from hands.stealth_browser import (
+    browse as stealth_browse,
+    take_screenshot as stealth_screenshot,
+    fill_form as stealth_fill_form,
+    click_element as stealth_click,
+    type_text as stealth_type,
+    google_search as stealth_google_search,
+    get_page_content as stealth_get_page,
+    execute_js as stealth_js,
+)
+from hands.desktop import (
+    desktop_action,
+    open_app as desktop_open_app,
+    get_open_windows as desktop_list_windows,
+    press_key as desktop_press_key,
+    take_screenshot as desktop_screenshot,
+    get_ui_elements,
+)
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
@@ -75,19 +92,7 @@ async def get_weather(
         return f"An error occurred while retrieving weather for {city}."
 
 
-@function_tool()
-async def search_web(
-    context: RunContext,
-    query: str,
-) -> str:
-    """Search the web using DuckDuckGo."""
-    try:
-        results = DuckDuckGoSearchRun().run(tool_input=query)
-        logging.info(f"Search results for '{query}': {results}")
-        return results
-    except Exception as e:
-        logging.error(f"Error searching the web for '{query}': {e}")
-        return f"An error occurred while searching the web for '{query}'."
+# search_web removed — replaced by google_search (real browser)
 
 
 @function_tool()
@@ -131,10 +136,11 @@ async def browse_url(
     context: RunContext,
     url: str,
 ) -> str:
-    """Browse a URL using a stealth browser. Returns the page title and visible text content.
-    Use this when the user asks you to go to a website, check a page, or read web content."""
+    """Browse a URL using the real browser (undetectable). Returns the page title and visible text.
+    Use this when the user asks you to go to a website, check a page, or read web content.
+    This uses the user's actual browser — logged-in sessions, cookies, everything."""
     try:
-        result = await hands_browse(url)
+        result = await stealth_browse(url)
         if not result.get("ok"):
             return f"Failed to browse {url}: {result.get('error', 'Unknown error')}"
         title = result.get("title", "No title")
@@ -148,17 +154,25 @@ async def browse_url(
 @function_tool()
 async def take_screenshot(
     context: RunContext,
-    url: str,
+    url: str = "",
 ) -> str:
-    """Take a screenshot of a webpage. Returns the file path to the saved screenshot image.
-    Use this when the user asks to capture or screenshot a page."""
+    """Take a screenshot of a webpage or the current desktop screen.
+    If url is provided, navigates there first. If empty, captures current screen.
+    Use this when the user asks to capture or screenshot a page or their screen."""
     try:
-        result = await hands_screenshot(url)
+        if url:
+            result = await stealth_screenshot(url)
+        else:
+            result = await desktop_screenshot()
+
         if not result.get("ok"):
-            return f"Failed to screenshot {url}: {result.get('error', 'Unknown error')}"
+            return f"Failed to screenshot: {result.get('error', 'Unknown error')}"
         filepath = result.get("path", "unknown")
-        title = result.get("title", "No title")
-        return f"Screenshot saved: {filepath}\nPage: {title}"
+        title = result.get("title", "")
+        msg = f"Screenshot saved: {filepath}"
+        if title:
+            msg += f"\nPage: {title}"
+        return msg
     except Exception as e:
         logging.error(f"screenshot error: {e}")
         return f"Screenshot error: {e}"
@@ -170,13 +184,13 @@ async def fill_web_form(
     url: str,
     fields: str,
 ) -> str:
-    """Fill form fields on a webpage with human-like stealth typing.
+    """Fill form fields on a webpage with human-like typing in the real browser.
     The fields parameter should be a JSON string like:
     [{"selector": "input[name='email']", "value": "test@example.com"}]
-    Use this when the user asks to fill out a form on a website."""
+    Use this when the user asks to fill out or sign up on a website."""
     try:
         fields_list = _json.loads(fields)
-        result = await hands_fill_form(url, fields_list)
+        result = await stealth_fill_form(url, fields_list)
         if not result.get("ok"):
             return f"Failed to fill form on {url}: {result.get('error', 'Unknown error')}"
         filled = result.get("fields_filled", [])
@@ -186,6 +200,122 @@ async def fill_web_form(
     except Exception as e:
         logging.error(f"fill_form error: {e}")
         return f"Form fill error: {e}"
+
+
+# ============================================
+# GOOGLE SEARCH — Real Browser
+# ============================================
+
+@function_tool()
+async def google_search(
+    context: RunContext,
+    query: str,
+) -> str:
+    """Search Google using the user's real browser. Returns top 5 results with titles,
+    URLs, and snippets. This uses the user's actual Google account — personalized results.
+    Use this when the user asks to search or Google something."""
+    try:
+        result = await stealth_google_search(query)
+        if not result.get("ok"):
+            return f"Google search failed: {result.get('error', 'Unknown error')}"
+
+        results = result.get("results", [])
+        if not results:
+            return f"No results found for: {query}"
+
+        output = f"Google results for '{query}':\n\n"
+        for i, r in enumerate(results, 1):
+            output += f"{i}. {r.get('title', 'No title')}\n"
+            output += f"   {r.get('url', '')}\n"
+            output += f"   {r.get('snippet', '')}\n\n"
+        return output
+    except Exception as e:
+        logging.error(f"google_search error: {e}")
+        return f"Search error: {e}"
+
+
+# ============================================
+# DESKTOP CONTROL TOOLS — Full Hands
+# ============================================
+
+@function_tool()
+async def control_desktop(
+    context: RunContext,
+    instruction: str,
+) -> str:
+    """Control the desktop — open apps, click buttons, type text, press keys, take screenshots.
+    This controls the user's ACTUAL screen. Examples:
+    - "open Chrome" / "open Excel" / "open Spotify"
+    - "type Hello World"
+    - "press ctrl+c" / "press enter" / "press alt+f4"
+    - "click Save in Notepad"
+    - "screenshot"
+    - "list windows"
+    - "focus Chrome"
+    - "scroll down"
+    Use this when the user asks to interact with desktop apps or their screen."""
+    try:
+        result = await desktop_action(instruction)
+        if not result.get("ok"):
+            return f"Desktop action failed: {result.get('error', 'Unknown error')}"
+
+        # Build response based on action type
+        action = result.get("action", "")
+        if action == "launched":
+            return f"Opened {result.get('app', instruction)}"
+        elif action == "focused":
+            return f"Focused window: {result.get('window', '')}"
+        elif "windows" in result:
+            windows = result["windows"]
+            if not windows:
+                return "No windows open."
+            output = f"Open windows ({len(windows)}):\n"
+            for w in windows[:15]:
+                output += f"  - {w['title']}\n"
+            return output
+        elif "path" in result:
+            return f"Screenshot saved: {result['path']}"
+        elif "clicked" in result:
+            return f"Clicked: {result['clicked']}"
+        elif "typed" in result:
+            return f"Typed: {result['typed']}"
+        elif "key" in result:
+            return f"Pressed: {result['key']}"
+        elif "scrolled" in result:
+            return f"Scrolled {result['scrolled']} clicks"
+        else:
+            return f"Done: {_json.dumps(result)}"
+    except Exception as e:
+        logging.error(f"control_desktop error: {e}")
+        return f"Desktop error: {e}"
+
+
+@function_tool()
+async def read_screen(
+    context: RunContext,
+    window_title: str = "",
+) -> str:
+    """Read the UI elements visible on screen or in a specific window.
+    Returns clickable elements with their names — useful for figuring out
+    what to click or interact with. Use this before clicking things on the desktop."""
+    try:
+        result = await get_ui_elements(window_title or None)
+        if not result.get("ok"):
+            return f"Could not read UI: {result.get('error', 'Unknown error')}"
+
+        elements = result.get("elements", [])
+        if not elements:
+            return f"No UI elements found in '{window_title or 'foreground window'}'."
+
+        output = f"UI elements in '{result.get('window', 'foreground')}' ({len(elements)} found):\n\n"
+        for el in elements[:30]:
+            output += f"  [{el['type']}] \"{el['name']}\" at ({el['x']}, {el['y']})\n"
+        if len(elements) > 30:
+            output += f"\n  ... and {len(elements) - 30} more"
+        return output
+    except Exception as e:
+        logging.error(f"read_screen error: {e}")
+        return f"Screen read error: {e}"
 
 
 @function_tool()

@@ -2,6 +2,7 @@ import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import VoiceCall from "./pages/VoiceCall";
 import AvatarLab from "./pages/AvatarLab";
+import CocreatiqHome from "./pages/CocreatiqHome";
 
 const BRAIN_URL = import.meta.env.VITE_BRAIN_URL || "http://127.0.0.1:8100";
 
@@ -9,7 +10,7 @@ function Nav() {
   const location = useLocation();
 
   // Hide nav on full-screen pages
-  if (location.pathname === "/call" || location.pathname === "/avatar-lab") return null;
+  if (location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/cocreatiq") return null;
 
   const isActive = (path: string) =>
     location.pathname === path
@@ -37,7 +38,7 @@ function Nav() {
 
 export default function App() {
   const location = useLocation();
-  const isFullScreen = location.pathname === "/call" || location.pathname === "/avatar-lab";
+  const isFullScreen = location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/cocreatiq";
 
   return (
     <div className="min-h-screen bg-champ-bg text-white">

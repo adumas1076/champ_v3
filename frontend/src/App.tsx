@@ -47,6 +47,7 @@ export default function App() {
         <Routes>
           <Route path="/call" element={<VoiceCall brainUrl={BRAIN_URL} />} />
           <Route path="/avatar-lab" element={<AvatarLab />} />
+          <Route path="/cocreatiq" element={<CocreatiqHome />} />
         </Routes>
       ) : (
         <main className="p-6 max-w-5xl mx-auto">

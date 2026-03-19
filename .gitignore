@@ -23,6 +23,7 @@ __pycache__/
 
 # Node.js
 node_modules/
+dist/
 hands/package-lock.json
 hands/test-screenshot.png
 hands/test-wikipedia.png

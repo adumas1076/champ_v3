@@ -1,7 +1,7 @@
 # ============================================
 # CHAMP V3 — Brain Pipeline
 # The nerve center for Phase 2.
-# Flow: Mode Detect → Persona Load → Context Build → LiteLLM
+# Flow: Mode Detect → Loop Select → Persona Load → Context Build → LiteLLM
 # ============================================
 
 import json
@@ -18,10 +18,12 @@ from brain.models import (
 )
 from brain.persona_loader import PersonaLoader
 from brain.mode_detector import ModeDetector
+from brain.loop_selector import LoopSelector
 from brain.context_builder import ContextBuilder
 from brain.llm_client import LiteLLMClient
 from brain.memory import SupabaseMemory
 from mind.healing import HealingLoop
+from mind.letta_memory import LettaMemory
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +47,38 @@ class BrainPipeline:
         self.llm_client = LiteLLMClient(settings)
         self.persona_loader = PersonaLoader(settings)
         self.mode_detector = ModeDetector()
+        self.loop_selector = LoopSelector()
         self.context_builder = ContextBuilder()
         self.memory = SupabaseMemory(settings)
         self.healing = HealingLoop()
+        self.letta = LettaMemory(settings)
 
     async def startup(self) -> None:
         """Initialize components on app startup."""
         await self.persona_loader.load()
         await self.memory.connect()
-        logger.info("Brain pipeline initialized")
+        letta_ok = await self.letta.connect()
+
+        # Sync Supabase profile → Letta memory.human block (default user on startup)
+        if letta_ok:
+            profile_data = await self.memory.get_profile_data(self.settings.default_user)
+            if profile_data:
+                synced = await self.letta.sync_from_supabase(profile_data)
+                logger.info(
+                    f"[LETTA] Synced {len(profile_data)} profile entries to memory.human"
+                    if synced else "[LETTA] Profile sync skipped (no data or error)"
+                )
+
+        logger.info(
+            f"Brain pipeline initialized | "
+            f"Letta: {'connected' if letta_ok else 'offline (graceful degradation)'}"
+        )
 
     async def shutdown(self) -> None:
         """Cleanup on app shutdown."""
         await self.llm_client.close()
         await self.memory.disconnect()
+        await self.letta.disconnect()
         logger.info("Brain pipeline shut down")
 
     async def handle_request(
@@ -73,20 +93,32 @@ class BrainPipeline:
         # 2. Detect mode BEFORE LLM call
         mode = self.mode_detector.detect(user_message)
 
-        # 2.5 Healing detection (real-time friction check)
+        # 2.1 Select execution loop
+        loop = self.loop_selector.select(user_message)
+        loop_instruction = self.loop_selector.get_instruction(loop)
+
+        # 2.5 Resolve user ID — multi-user support
+        user_id = self._resolve_user_id(request)
         conv_id = request.user or None
+
+        # 2.6 Healing detection (real-time friction check)
         recent = await self.memory.get_recent_messages(conv_id, limit=6) if conv_id else []
         healing = self.healing.detect(user_message, mode, recent)
         if healing.mode_override:
-            logger.info(f"[HEALING] Mode override: {mode.value} → {healing.mode_override.value}")
+            logger.info(f"[HEALING] Mode override: {mode.value} -> {healing.mode_override.value}")
             mode = healing.mode_override
 
-        # 3. Fetch memory context
-        memory_context = await self.memory.get_context("anthony")
+        # 3. Fetch memory context (Supabase + Letta) — per user
+        memory_context = await self.memory.get_context(user_id)
+        letta_context = await self.letta.get_all_blocks()
+        if letta_context:
+            memory_context = (memory_context + "\n\n" + letta_context) if memory_context else letta_context
         if healing.warning_text:
             memory_context = memory_context + "\n\n" + healing.warning_text if memory_context else healing.warning_text
+        if loop_instruction:
+            memory_context = memory_context + loop_instruction if memory_context else loop_instruction
 
-        # 4. Build enriched context (persona + memory + mode)
+        # 4. Build enriched context (persona + memory + mode + loop)
         enriched_messages = self.context_builder.build(
             original_messages=request.messages,
             persona=self.persona_loader.get_persona(),
@@ -125,7 +157,7 @@ class BrainPipeline:
             for issue in healing.issues:
                 try:
                     await self.memory.insert_healing(
-                        user_id="anthony",
+                        user_id=user_id,
                         error_type=issue["type"],
                         severity=issue["severity"],
                         trigger_context=issue.get("context", ""),
@@ -136,7 +168,7 @@ class BrainPipeline:
 
         elapsed = time.time() - start_time
         logger.info(
-            f"[BRAIN] mode={mode.value} | model={request.model} | "
+            f"[BRAIN] mode={mode.value} | loop={loop.value} | model={request.model} | "
             f"memory={len(memory_context)}chars | "
             f"healing={len(healing.issues)} issues | {elapsed:.1f}s"
         )
@@ -159,22 +191,34 @@ class BrainPipeline:
 
         # 2. Detect mode BEFORE LLM call
         mode = self.mode_detector.detect(user_message)
-        logger.info(f"[STREAM] Mode: {mode.value}")
 
-        # 2.5 Healing detection (real-time friction check)
+        # 2.1 Select execution loop
+        loop = self.loop_selector.select(user_message)
+        loop_instruction = self.loop_selector.get_instruction(loop)
+        logger.info(f"[STREAM] Mode: {mode.value} | Loop: {loop.value}")
+
+        # 2.5 Resolve user ID — multi-user support
+        user_id = self._resolve_user_id(request)
         conv_id = request.user or None
+
+        # 2.6 Healing detection (real-time friction check)
         recent = await self.memory.get_recent_messages(conv_id, limit=6) if conv_id else []
         healing = self.healing.detect(user_message, mode, recent)
         if healing.mode_override:
-            logger.info(f"[STREAM][HEALING] Mode override: {mode.value} → {healing.mode_override.value}")
+            logger.info(f"[STREAM][HEALING] Mode override: {mode.value} -> {healing.mode_override.value}")
             mode = healing.mode_override
 
-        # 3. Fetch memory context
-        memory_context = await self.memory.get_context("anthony")
+        # 3. Fetch memory context (Supabase + Letta) — per user
+        memory_context = await self.memory.get_context(user_id)
+        letta_context = await self.letta.get_all_blocks()
+        if letta_context:
+            memory_context = (memory_context + "\n\n" + letta_context) if memory_context else letta_context
         if healing.warning_text:
             memory_context = memory_context + "\n\n" + healing.warning_text if memory_context else healing.warning_text
+        if loop_instruction:
+            memory_context = memory_context + loop_instruction if memory_context else loop_instruction
 
-        # 4. Build enriched context (persona + memory + mode)
+        # 4. Build enriched context (persona + memory + mode + loop)
         enriched_messages = self.context_builder.build(
             original_messages=request.messages,
             persona=self.persona_loader.get_persona(),
@@ -231,7 +275,7 @@ class BrainPipeline:
             for issue in healing.issues:
                 try:
                     await self.memory.insert_healing(
-                        user_id="anthony",
+                        user_id=user_id,
                         error_type=issue["type"],
                         severity=issue["severity"],
                         trigger_context=issue.get("context", ""),
@@ -265,6 +309,26 @@ class BrainPipeline:
                     ]
                     return " ".join(text_parts)
         return ""
+
+    def _resolve_user_id(self, request: ChatCompletionRequest) -> str:
+        """
+        Extract the user ID from the request.
+
+        Multi-user support: the user field can carry either a conversation ID
+        or a user_id:conversation_id format. We extract the user_id portion.
+
+        Falls back to settings.default_user if not provided.
+        """
+        raw = request.user or ""
+        if ":" in raw:
+            # Format: "user_id:conversation_id"
+            return raw.split(":")[0]
+        if raw:
+            # Could be just a conversation ID — check if it looks like a user ID
+            # (no dashes = likely a user ID, dashes = likely a UUID conversation ID)
+            if "-" not in raw and len(raw) < 50:
+                return raw
+        return self.settings.default_user
 
     def _has_images(self, request: ChatCompletionRequest) -> bool:
         """Check if the request contains image content."""

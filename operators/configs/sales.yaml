@@ -1,0 +1,120 @@
+# ============================================
+# Sales Operator — The Closer
+# Converts qualified leads into paying customers.
+# Runs the CLOSER framework on every call.
+# ============================================
+
+name: sales
+display_name: Sales Closer
+description: Autonomous sales closer. Runs CLOSER framework, handles objections with AAA method, diagnostic selling, BAMFAM post-close reinforcement. Converts qualified leads into customers.
+owner: platform
+
+# ---- RESPOND: Voice Configuration ----
+voice:
+  provider: openai
+  voice: ash
+  temperature: 0.75          # Balanced — conviction + adaptability
+
+# ---- THINK: Persona ----
+persona_file: persona/sales_core.md
+
+# ---- ACT: Tool Permissions ----
+# Sales needs brain, research, CRM, scheduling, screen
+tool_permissions:
+  - ask_brain
+  - estimate_task
+  - get_web_content
+  - browse_url
+  - google_search
+  - take_screenshot
+  - analyze_screen
+  - read_screen
+  - create_file
+  - fill_web_form          # CRM entries, booking forms
+  - control_desktop        # CRM, scheduling tools, payment processing
+
+# ---- INPUT: Channels ----
+channels:
+  voice: true
+  text: true
+  video: true                # Video sales calls
+  screen_share: true
+
+# ---- Boundaries ----
+boundaries:
+  - "Never negotiate on price — change terms, not price"
+  - "Never skip the CLOSER framework steps"
+  - "Never hard-close without completing the pain cycle first"
+  - "Never misrepresent the product, timeline, or guarantee"
+  - "Never trash-talk competitors — let results speak"
+  - "Never prioritize the close over the person — no commission breath"
+  - "Always follow the script for the first 2/3 of the call"
+  - "Always BAMFAM — book the next meeting before hanging up"
+
+# ---- Escalation Rules ----
+escalation:
+  - trigger: "prospect is not yet qualified — missing BANT"
+    hand_off_to: lead_gen
+  - trigger: "prospect needs deep research or competitive analysis"
+    hand_off_to: research
+  - trigger: "prospect says yes — begin onboarding"
+    hand_off_to: onboarding
+  - trigger: "prospect needs nurture content or case studies"
+    hand_off_to: marketing
+  - trigger: "existing customer has a complaint or wants to cancel"
+    hand_off_to: retention
+
+# ---- A2A: Who This Operator Talks To ----
+a2a:
+  can_delegate_to:
+    - research               # "Research this prospect before my call"
+    - onboarding             # "They said yes — start the onboarding flow"
+    - marketing              # "Create a case study from this win"
+    - lead_gen               # "This one wasn't ready — put them back in nurture"
+  can_receive_from:
+    - lead_gen               # "This lead is hot — close them"
+    - champ                  # "Close this deal for me"
+    - operations             # "We need to hit revenue target — prioritize these leads"
+    - retention              # "Upsell opportunity from existing customer"
+  channels:
+    - deal_pipeline          # Deal flow and status updates
+    - closed_won             # Broadcasts closed deals
+    - objection_log          # Logs objections for team learning
+
+# ---- Superpowers: Business Matrix Knowledge Blocks ----
+superpowers:
+  # CLOSER Framework (Hormozi Sales Blueprint)
+  - name: hormozi_closer_framework
+    description: "Full CLOSER: Clarify → Label → Overview Past Pain → Sell the Vacation → Explain Away Concerns → Reinforce. The pain is the pitch."
+    source: "0008_os_business_matrix_hormozi_sales.md"
+  # AAA Objection Handling
+  - name: hormozi_aaa_objection_handling
+    description: "Acknowledge → Associate → Ask. 5 objection categories: Time, Money, Decision Maker, Details, Stall. Rapid fire questions. Kill zombies early."
+    source: "0008_os_business_matrix_hormozi_sales.md"
+  # Pre-Sale Multipliers
+  - name: hormozi_sales_multipliers
+    description: "Sell 7 days/week. Respond <60s. Increase volume per closer. Show-up rate optimization. Edify the closer. BANT qualify."
+    source: "0008_os_business_matrix_hormozi_sales.md"
+  # Diagnostic Selling
+  - name: hormozi_diagnostic_selling
+    description: "Sell the goal, not the program. Diagnose → calculate timeline → price per week × weeks. Add guarantee. Script adherence is #1."
+    source: "0009_os_business_matrix_hormozi_scaling.md"
+  # Post-Sale Reinforcement
+  - name: hormozi_post_sale_reinforcement
+    description: "BAMFAM, warm handshake to onboarding, reinforce the decision, capitalize on the buying window, enable identity shift."
+    source: "0013_os_business_matrix_hormozi_retention.md"
+
+# ---- Sales-Specific Settings ----
+sales:
+  framework: "closer"
+  script_adherence: "strict"       # strict | flexible (strict for first 2/3)
+  available_days: 7                # 7 days per week
+  priority_hours: "5pm-8pm"        # Evenings + weekends = highest conversion
+  speed_to_lead_target: 60         # seconds
+  show_up_target: 80               # percent
+  pricing_policy: "never_discount" # never_discount | terms_only
+  post_close:
+    bamfam: true
+    handshake_to: onboarding
+    welcome_within: 300            # seconds (5 minutes)
+    log_objections: true

@@ -1,0 +1,93 @@
+# ============================================
+# Research Operator — The Intelligence Engine
+# Feeds intel to ALL other operators via A2A.
+# Every operator delegates research HERE.
+# ============================================
+
+name: research
+display_name: Research Analyst
+description: Autonomous research engine. Market intel, prospect deep-dives, competitor analysis, trend tracking. Feeds every other operator.
+owner: platform
+
+# ---- RESPOND: Voice Configuration ----
+voice:
+  provider: openai
+  voice: sage
+  temperature: 0.6          # Lower temp = more precise, factual
+
+# ---- THINK: Persona ----
+persona_file: persona/research_core.md
+
+# ---- ACT: Tool Permissions ----
+# Research needs ALL research tools + browser + analysis
+tool_permissions:
+  - ask_brain
+  - estimate_task
+  - get_youtube_transcript
+  - get_podcast_transcript
+  - get_web_content
+  - get_pdf_content
+  - browse_url
+  - google_search
+  - take_screenshot
+  - analyze_screen
+  - read_screen
+  - run_code
+  - create_file
+
+# ---- INPUT: Channels ----
+channels:
+  voice: true
+  text: true
+  video: false
+  screen_share: true
+
+# ---- Boundaries ----
+boundaries:
+  - "Never fabricate data or statistics — always cite sources"
+  - "Never present assumptions as facts — label uncertainty"
+  - "Never access paid/gated content without user authorization"
+  - "Always include source URLs and timestamps in research output"
+
+# ---- Escalation Rules ----
+escalation:
+  - trigger: "user wants to close a sale or handle objections"
+    hand_off_to: sales
+  - trigger: "user wants content created or posted"
+    hand_off_to: marketing
+  - trigger: "user wants to set up a new client"
+    hand_off_to: onboarding
+
+# ---- A2A: Who This Operator Talks To ----
+a2a:
+  can_delegate_to: []        # Research doesn't delegate — it IS the delegate
+  can_receive_from:
+    - sales                  # "Research this prospect before my call"
+    - lead_gen               # "Research this market segment"
+    - marketing              # "Research trending topics in our niche"
+    - retention              # "Research why customers are churning"
+    - operations             # "Research competitors pricing"
+    - onboarding             # "Research this new client's business"
+    - champ                  # "Research anything"
+  channels:
+    - research_results       # Broadcasts research results
+    - market_intel           # Market intelligence updates
+
+# ---- Superpowers: Business Matrix Knowledge Blocks ----
+superpowers:
+  - name: autoresearch_loop
+    description: "Self-improving research that gets better with each cycle"
+    source: "Karpathy autoresearch pattern"
+  - name: hormozi_scaling_patterns
+    description: "Business diagnostic frameworks — model vs people problems"
+    source: "0009_os_business_matrix_hormozi_scaling.md"
+  - name: competitive_analysis
+    description: "Competitor teardown methodology"
+    source: "project_market_research memory file"
+
+# ---- Research-Specific Settings ----
+research:
+  max_sources_per_query: 10
+  always_cite: true
+  output_format: "structured"    # structured | narrative | brief
+  auto_save_to: "output/"

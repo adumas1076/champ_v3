@@ -5,6 +5,7 @@
 # ============================================
 
 import asyncio
+import base64
 import json as _json
 import logging
 import os
@@ -176,6 +177,101 @@ async def take_screenshot(
     except Exception as e:
         logging.error(f"screenshot error: {e}")
         return f"Screenshot error: {e}"
+
+
+# ============================================
+# ACTIVE VISION — Screenshot + LLM Analysis
+# ============================================
+
+# Vision-capable models registered in LiteLLM
+VISION_MODELS = {"gemini-flash", "gpt-4o", "claude-sonnet"}
+DEFAULT_VISION_MODEL = "gemini-flash"  # Fast + cheap for quick screen reads
+
+
+@function_tool()
+async def analyze_screen(
+    context: RunContext,
+    question: str = "Describe what you see on screen in detail.",
+    url: str = "",
+    model: str = "",
+) -> str:
+    """Look at the screen or a webpage and analyze what you see using a vision model.
+    This is your EYES — use this when you need to UNDERSTAND what's on screen, not just capture it.
+
+    - question: What to analyze (e.g. "what app is open?", "read the error message", "describe the UI")
+    - url: Optional URL to screenshot first. If empty, captures the current desktop screen.
+    - model: Vision model to use. Options: "gemini-flash" (fast/cheap, default), "gpt-4o" (detailed),
+      "claude-sonnet" (code-heavy screens). Leave empty for auto (gemini-flash).
+
+    Use this when the user says "look at my screen", "what do you see", "read that error",
+    "what's on the page", or any time you need to visually understand something."""
+    try:
+        # 1. Capture screenshot
+        if url:
+            result = await stealth_screenshot(url)
+        else:
+            result = await desktop_screenshot()
+
+        if not result.get("ok"):
+            return f"Failed to capture screen: {result.get('error', 'Unknown error')}"
+
+        filepath = result.get("path", "")
+        if not filepath or not Path(filepath).exists():
+            return "Screenshot captured but file not found."
+
+        # 2. Read + base64 encode the image
+        image_bytes = Path(filepath).read_bytes()
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        # 3. Pick the vision model
+        vision_model = model.strip().lower() if model.strip() else DEFAULT_VISION_MODEL
+        if vision_model not in VISION_MODELS:
+            return (
+                f"Unknown vision model '{vision_model}'. "
+                f"Available: {', '.join(sorted(VISION_MODELS))}"
+            )
+
+        # 4. Send to Brain with image for vision analysis
+        payload = {
+            "model": vision_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_b64}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            "stream": False,
+            "max_tokens": 1000,
+        }
+
+        response = requests.post(
+            f"{BRAIN_URL}/v1/chat/completions",
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+        data = response.json()
+        analysis = data["choices"][0]["message"]["content"]
+
+        title = result.get("title", "")
+        source = f" ({title})" if title else " (desktop)"
+        logging.info(
+            f"[VISION] Analyzed{source} with {vision_model}: "
+            f"{len(analysis)} chars"
+        )
+        return analysis
+
+    except Exception as e:
+        logging.error(f"analyze_screen error: {e}")
+        return f"Vision analysis failed: {e}"
 
 
 @function_tool()
@@ -383,6 +479,171 @@ async def create_file(
 
 
 # ============================================
+# COST ESTIMATION — The Differentiator
+# No competitor tells you what a task will cost
+# BEFORE running it. CHAMP does.
+# ============================================
+
+# Capability → cost mapping (mirrors AIOSCP bridge)
+_CAPABILITY_COSTS = {
+    # (min_cost, max_cost, avg_latency_ms, description)
+    "browse_url":       (0.00,  0.00,  3000,  "Browse a webpage"),
+    "google_search":    (0.00,  0.00,  4000,  "Google search"),
+    "take_screenshot":  (0.00,  0.00,  2000,  "Take screenshot"),
+    "analyze_screen":   (0.005, 0.05,  3000,  "Vision analysis"),
+    "fill_web_form":    (0.00,  0.00,  5000,  "Fill web form"),
+    "control_desktop":  (0.00,  0.00,  1000,  "Desktop control"),
+    "run_code":         (0.00,  0.00,  2000,  "Run code"),
+    "create_file":      (0.00,  0.00,  100,   "Create file"),
+    "ask_brain":        (0.01,  0.10,  5000,  "Brain thinking"),
+    "read_screen":      (0.00,  0.00,  500,   "Read UI elements"),
+    "go_do":            (0.10,  2.00,  300000, "Self Mode (autonomous)"),
+}
+
+# Task keyword → likely capabilities mapping
+_TASK_CAPABILITY_MAP = {
+    # Research / browsing
+    "search": ["google_search", "browse_url", "ask_brain"],
+    "google": ["google_search"],
+    "browse": ["browse_url"],
+    "website": ["browse_url", "analyze_screen"],
+    "look up": ["google_search", "browse_url"],
+    "find": ["google_search", "browse_url"],
+    "research": ["google_search", "browse_url", "ask_brain", "analyze_screen"],
+    # Building / coding
+    "build": ["ask_brain", "run_code", "create_file"],
+    "create": ["ask_brain", "create_file"],
+    "write": ["ask_brain", "create_file"],
+    "script": ["ask_brain", "run_code", "create_file"],
+    "code": ["ask_brain", "run_code"],
+    "make": ["ask_brain", "run_code", "create_file"],
+    # Desktop
+    "open": ["control_desktop"],
+    "click": ["control_desktop", "read_screen"],
+    "desktop": ["control_desktop", "read_screen"],
+    "app": ["control_desktop"],
+    # Screen / vision
+    "screen": ["analyze_screen"],
+    "look at": ["analyze_screen"],
+    "what's on": ["analyze_screen"],
+    "see": ["analyze_screen"],
+    "read": ["analyze_screen", "read_screen"],
+    # Forms / automation
+    "sign up": ["browse_url", "fill_web_form"],
+    "fill": ["browse_url", "fill_web_form"],
+    "log in": ["browse_url", "fill_web_form"],
+    # Autonomous
+    "scraper": ["go_do"],
+    "pipeline": ["go_do"],
+    "automate": ["go_do"],
+    "autonomous": ["go_do"],
+}
+
+
+def _estimate_from_task(task_description: str) -> dict:
+    """
+    Analyze a task description and estimate cost + time.
+    Returns dict with cost range, time estimate, and capabilities.
+    """
+    task_lower = task_description.lower()
+    matched_caps = set()
+
+    # Match keywords to capabilities
+    for keyword, caps in _TASK_CAPABILITY_MAP.items():
+        if keyword in task_lower:
+            matched_caps.update(caps)
+
+    # Default: at least brain thinking
+    if not matched_caps:
+        matched_caps.add("ask_brain")
+
+    # Calculate totals
+    min_cost = 0.0
+    max_cost = 0.0
+    total_latency = 0
+
+    cap_details = []
+    for cap_id in sorted(matched_caps):
+        if cap_id in _CAPABILITY_COSTS:
+            cmin, cmax, latency, desc = _CAPABILITY_COSTS[cap_id]
+            min_cost += cmin
+            max_cost += cmax
+            total_latency += latency
+            cap_details.append({
+                "capability": cap_id,
+                "description": desc,
+                "cost": f"${cmin:.3f}-{cmax:.2f}" if cmin != cmax else f"${cmin:.2f}",
+                "time": f"{latency/1000:.0f}s" if latency < 60000 else f"{latency/60000:.0f}min",
+            })
+
+    # Format time
+    if total_latency < 60000:
+        time_est = f"{total_latency/1000:.0f} seconds"
+    elif total_latency < 3600000:
+        time_est = f"{total_latency/60000:.0f} minutes"
+    else:
+        time_est = f"{total_latency/3600000:.1f} hours"
+
+    # Format cost
+    if min_cost == max_cost:
+        cost_est = f"${min_cost:.2f}"
+    else:
+        cost_est = f"${min_cost:.2f}-{max_cost:.2f}"
+
+    return {
+        "estimated_cost": cost_est,
+        "estimated_time": time_est,
+        "capabilities_needed": len(matched_caps),
+        "details": cap_details,
+        "is_free": max_cost == 0.0,
+    }
+
+
+@function_tool()
+async def estimate_task(
+    context: RunContext,
+    task: str,
+) -> str:
+    """Estimate the cost and time for a task BEFORE doing it.
+    Use this when the user asks about cost, price, how long something takes,
+    or before starting an expensive/complex task.
+    Also use this proactively for Self Mode tasks — always estimate before go_do.
+
+    Examples: "how much would it cost to...", "how long to...",
+    "what would it take to...", "estimate this task"."""
+    try:
+        estimate = _estimate_from_task(task)
+
+        if estimate["is_free"]:
+            summary = (
+                f"That task is free — no API costs. "
+                f"Should take about {estimate['estimated_time']}. "
+                f"Uses {estimate['capabilities_needed']} capabilities."
+            )
+        else:
+            summary = (
+                f"Estimated cost: {estimate['estimated_cost']}. "
+                f"Estimated time: {estimate['estimated_time']}. "
+                f"Uses {estimate['capabilities_needed']} capabilities."
+            )
+
+        # Add breakdown for complex tasks
+        if len(estimate["details"]) > 2:
+            summary += "\n\nBreakdown:"
+            for d in estimate["details"]:
+                summary += f"\n  - {d['description']}: {d['cost']} ({d['time']})"
+
+        logging.info(
+            f"[COST] Estimate for '{task[:50]}': "
+            f"{estimate['estimated_cost']} / {estimate['estimated_time']}"
+        )
+        return summary
+    except Exception as e:
+        logging.error(f"estimate_task error: {e}")
+        return f"Couldn't estimate: {e}"
+
+
+# ============================================
 # SELF MODE TOOLS -- Brick 8.5
 # ============================================
 
@@ -397,6 +658,10 @@ async def go_do(
     Self Mode will plan, execute, review, fix, and deliver the result autonomously.
     Returns a run ID so you can check on progress later with check_task."""
     try:
+        # Estimate cost BEFORE submitting
+        estimate = _estimate_from_task(task)
+        cost_note = f"Estimated cost: {estimate['estimated_cost']}."
+
         response = requests.post(
             f"{BRAIN_URL}/v1/self_mode/submit",
             json={"task": task},
@@ -406,9 +671,13 @@ async def go_do(
         data = response.json()
         run_id = data.get("run_id", "unknown")
         _pending_run_ids.add(run_id)
-        logging.info(f"Self Mode task submitted: {run_id} for '{task[:60]}'")
+        logging.info(
+            f"Self Mode task submitted: {run_id} for '{task[:60]}' | "
+            f"{cost_note}"
+        )
         return (
             f"Got it -- I'm on it. Self Mode run started: {run_id}. "
+            f"{cost_note} "
             f"I'll plan, build, test, and deliver this autonomously. "
             f"You can ask me to check on it anytime."
         )
@@ -548,3 +817,251 @@ def poll_completed_runs() -> list[dict]:
             pass  # Network error, skip this tick
     _pending_run_ids -= to_remove
     return completed
+
+
+# ============================================
+# RESEARCH — YouTube Transcript Extraction
+# ============================================
+
+@function_tool()
+async def get_youtube_transcript(
+    context: RunContext,
+    video_url: str,
+    summary: bool = True,
+) -> str:
+    """Pull the full transcript from any public YouTube video.
+    Use this to research business frameworks, strategies, tutorials, or any video content.
+    Pass a YouTube URL (or just the video ID).
+    Set summary=True (default) to get a condensed version, or summary=False for the full raw transcript.
+    Use this when: user says "watch this video", "what does this video say", "pull the transcript",
+    or when researching a topic from YouTube content."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+
+        # Extract video ID from URL
+        video_id = video_url.strip()
+        if "youtube.com" in video_id:
+            if "v=" in video_id:
+                video_id = video_id.split("v=")[1].split("&")[0]
+            elif "/shorts/" in video_id:
+                video_id = video_id.split("/shorts/")[1].split("?")[0]
+        elif "youtu.be" in video_id:
+            video_id = video_id.split("youtu.be/")[1].split("?")[0]
+
+        ytt_api = YouTubeTranscriptApi()
+        transcript = ytt_api.fetch(video_id)
+
+        # Build full text with timestamps
+        lines = []
+        for entry in transcript.snippets:
+            minutes = int(entry.start // 60)
+            seconds = int(entry.start % 60)
+            lines.append(f"[{minutes}:{seconds:02d}] {entry.text}")
+
+        full_text = "\n".join(lines)
+        total_duration = transcript.snippets[-1].start if transcript.snippets else 0
+        duration_min = int(total_duration // 60)
+
+        header = (
+            f"YouTube Transcript ({len(transcript.snippets)} segments, "
+            f"~{duration_min} min)\n"
+            f"Video: https://www.youtube.com/watch?v={video_id}\n"
+            f"{'=' * 50}\n\n"
+        )
+
+        if summary and len(full_text) > 4000:
+            # Return first 2000 + last 2000 chars for context
+            truncated = full_text[:2000] + "\n\n[... middle truncated ...]\n\n" + full_text[-2000:]
+            return header + truncated + f"\n\nFull transcript: {len(full_text)} chars. Set summary=False for complete text."
+        else:
+            return header + full_text
+
+    except ImportError:
+        return "youtube-transcript-api not installed. Run: pip install youtube-transcript-api"
+    except Exception as e:
+        logging.error(f"get_youtube_transcript error: {e}")
+        return f"Failed to get transcript: {e}"
+
+
+# ============================================
+# RESEARCH — Podcast Transcript Extraction
+# ============================================
+
+@function_tool()
+async def get_podcast_transcript(
+    context: RunContext,
+    rss_url: str = "",
+    audio_url: str = "",
+    episode_index: int = 0,
+) -> str:
+    """Pull episode list from a podcast RSS feed, or get details about a specific episode.
+    Pass an RSS feed URL to list episodes. Pass audio_url to get episode info.
+    Use episode_index to select a specific episode from the feed (0 = latest).
+    Use this when: user mentions a podcast, wants to research podcast content,
+    or says "check this podcast"."""
+    try:
+        import podcastparser
+        import urllib.request
+
+        if rss_url:
+            # Parse RSS feed and list episodes
+            req = urllib.request.Request(rss_url, headers={"User-Agent": "Mozilla/5.0"})
+            feed = podcastparser.parse(rss_url, urllib.request.urlopen(req, timeout=30))
+
+            title = feed.get("title", "Unknown Podcast")
+            episodes = feed.get("episodes", [])
+
+            if not episodes:
+                return f"Podcast '{title}' found but no episodes available."
+
+            # List episodes
+            header = f"Podcast: {title}\nTotal Episodes: {len(episodes)}\n{'=' * 50}\n\n"
+
+            if episode_index < len(episodes):
+                ep = episodes[episode_index]
+                ep_detail = (
+                    f"Episode {episode_index}: {ep.get('title', 'Untitled')}\n"
+                    f"Published: {ep.get('published', 'Unknown')}\n"
+                    f"Duration: {ep.get('total_time', 0) // 60} min\n"
+                    f"Description: {ep.get('description', 'No description')[:500]}\n"
+                )
+                # Get audio URL
+                for enc in ep.get("enclosures", []):
+                    ep_detail += f"Audio URL: {enc.get('url', 'N/A')}\n"
+                header += ep_detail + "\n"
+
+            # List first 20 episodes
+            listing = "Recent Episodes:\n"
+            for i, ep in enumerate(episodes[:20]):
+                dur = ep.get("total_time", 0) // 60
+                listing += f"  [{i}] {ep.get('title', 'Untitled')} ({dur} min)\n"
+
+            return header + listing
+
+        return "Provide an rss_url to list podcast episodes."
+
+    except ImportError:
+        return "podcastparser not installed. Run: pip install podcastparser"
+    except Exception as e:
+        logging.error(f"get_podcast_transcript error: {e}")
+        return f"Failed to get podcast info: {e}"
+
+
+# ============================================
+# RESEARCH — Blog / Web Page Content Extraction
+# ============================================
+
+@function_tool()
+async def get_web_content(
+    context: RunContext,
+    url: str,
+    summary: bool = True,
+) -> str:
+    """Pull and extract the main text content from any web page, blog post, or article.
+    Use this to research blog posts, Substack articles, documentation, competitor pages,
+    or any public web content.
+    Pass a URL and get the clean text content back.
+    Use this when: user says "read this article", "check this blog", "what does this page say",
+    or when researching content from websites."""
+    try:
+        from bs4 import BeautifulSoup
+        import urllib.request
+
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        response = urllib.request.urlopen(req, timeout=30)
+        html = response.read().decode("utf-8", errors="ignore")
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Remove script, style, nav, footer, header elements
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+            tag.decompose()
+
+        # Extract title
+        title = soup.title.string if soup.title else "Untitled"
+
+        # Try to find main content area
+        main = soup.find("main") or soup.find("article") or soup.find("div", class_="content") or soup.body
+        if not main:
+            main = soup
+
+        # Extract text
+        text = main.get_text(separator="\n", strip=True)
+
+        # Clean up excessive newlines
+        import re
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        header = (
+            f"Web Content Extraction\n"
+            f"URL: {url}\n"
+            f"Title: {title}\n"
+            f"Length: {len(text)} chars\n"
+            f"{'=' * 50}\n\n"
+        )
+
+        if summary and len(text) > 6000:
+            truncated = text[:3000] + "\n\n[... middle truncated ...]\n\n" + text[-3000:]
+            return header + truncated + f"\n\nFull content: {len(text)} chars. Set summary=False for complete text."
+        else:
+            return header + text
+
+    except Exception as e:
+        logging.error(f"get_web_content error: {e}")
+        return f"Failed to extract web content: {e}"
+
+
+# ============================================
+# RESEARCH — PDF / Document Text Extraction
+# ============================================
+
+@function_tool()
+async def get_pdf_content(
+    context: RunContext,
+    file_path: str,
+    start_page: int = 0,
+    end_page: int = 0,
+) -> str:
+    """Extract text content from a PDF file.
+    Pass a file path to a PDF. Optionally specify start_page and end_page (0-indexed).
+    If end_page is 0, extracts all pages.
+    Use this when: user says "read this PDF", "extract from this document",
+    "what does this book say", or when processing business documents, SOPs, or books."""
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(file_path) as pdf:
+            total_pages = len(pdf.pages)
+
+            if end_page == 0 or end_page > total_pages:
+                end_page = total_pages
+
+            pages_text = []
+            for i in range(start_page, end_page):
+                page = pdf.pages[i]
+                text = page.extract_text()
+                if text:
+                    pages_text.append(f"--- Page {i + 1} ---\n{text}")
+
+            full_text = "\n\n".join(pages_text)
+
+            header = (
+                f"PDF Content Extraction\n"
+                f"File: {file_path}\n"
+                f"Total Pages: {total_pages}\n"
+                f"Extracted: Pages {start_page + 1}-{end_page}\n"
+                f"Length: {len(full_text)} chars\n"
+                f"{'=' * 50}\n\n"
+            )
+
+            return header + full_text
+
+    except ImportError:
+        return "pdfplumber not installed. Run: pip install pdfplumber"
+    except FileNotFoundError:
+        return f"File not found: {file_path}"
+    except Exception as e:
+        logging.error(f"get_pdf_content error: {e}")
+        return f"Failed to extract PDF content: {e}"

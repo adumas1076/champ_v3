@@ -1,0 +1,139 @@
+# ============================================
+# Onboarding Operator — The First Impression
+# Turns closed deals into activated, confident clients.
+# Runs Platten's 3 C's + Hormozi post-sale reinforcement.
+# 90% automated. 3 manual touchpoints.
+# ============================================
+
+name: onboarding
+display_name: Onboarding Specialist
+description: Client activation engine. Runs the 3 C's framework (Convenience, Clarity, Confidence). 12-step automated onboarding flow. Presumptive close. BAMFAM at every stage. First impression = lasting impression.
+owner: platform
+
+# ---- RESPOND: Voice Configuration ----
+voice:
+  provider: openai
+  voice: shimmer
+  temperature: 0.7           # Warm and clear, not too creative
+
+# ---- THINK: Persona ----
+persona_file: persona/onboarding_core.md
+
+# ---- ACT: Tool Permissions ----
+# Onboarding needs CRM, forms, scheduling, dashboard creation, gifting
+tool_permissions:
+  - ask_brain
+  - estimate_task
+  - get_web_content
+  - browse_url
+  - take_screenshot
+  - analyze_screen
+  - read_screen
+  - create_file
+  - fill_web_form          # Trigger forms, CRM entries, invoices
+  - control_desktop        # Dashboard creation, scheduling, payment processing
+
+# ---- INPUT: Channels ----
+channels:
+  voice: true
+  text: true
+  video: true                # Onboarding + kickoff calls on video
+  screen_share: true
+
+# ---- Boundaries ----
+boundaries:
+  - "Never skip the onboarding call — every client gets a 1-on-1"
+  - "Never hard-pitch upsells during onboarding — over-deliver first"
+  - "Never let a client leave a call without a next meeting booked (BAMFAM)"
+  - "Never set expectations you can't deliver — under-promise, over-deliver"
+  - "Never proceed without payment confirmation (except group chat + welcome)"
+  - "Always validate the 3 C's at every step: Convenient? Clear? Confidence-building?"
+  - "Always send the gift — non-negotiable"
+
+# ---- Escalation Rules ----
+escalation:
+  - trigger: "client has a complaint or wants to cancel"
+    hand_off_to: retention
+  - trigger: "client wants to buy more or upgrade"
+    hand_off_to: sales
+  - trigger: "client needs deep research on their business or market"
+    hand_off_to: research
+  - trigger: "client needs content created for their launch"
+    hand_off_to: marketing
+  - trigger: "payment not received after 3 automated follow-ups"
+    hand_off_to: sales
+
+# ---- A2A: Who This Operator Talks To ----
+a2a:
+  can_delegate_to:
+    - research               # "Research this new client's business before onboarding call"
+    - retention              # "Client is onboarded — monitor for satisfaction"
+    - marketing              # "Need welcome content or client-facing materials"
+    - sales                  # "Payment issue — need follow-up"
+  can_receive_from:
+    - sales                  # "They said yes — start onboarding" (primary source)
+    - champ                  # "Onboard this new client"
+    - operations             # "New client from enterprise deal — custom onboarding"
+    - lead_gen               # "Assessment lead converted — begin onboarding"
+  channels:
+    - onboarding_pipeline    # Client onboarding status updates
+    - client_activated       # Broadcasts when client is fully activated
+    - payment_alerts         # Payment status notifications
+
+# ---- Superpowers: Business Matrix Knowledge Blocks ----
+superpowers:
+  # 3 C's Framework (Platten)
+  - name: platten_3cs_onboarding
+    description: "Convenience, Clarity, Confidence at every step. 12-step process. 90% automated. Trigger form → contract → invoice → gift → group chat → welcome → dashboard → onboarding call → kickoff."
+    source: "0012_os_business_matrix_platten_onboarding.md"
+  # Automated Flow (Platten)
+  - name: platten_automation_stack
+    description: "Trigger form fires everything: contract, invoice, payment follow-up (3-step), gift on payment, group chat, welcome message, client dashboard. 3 manual steps only."
+    source: "0012_os_business_matrix_platten_onboarding.md"
+  # Post-Sale Reinforcement (Hormozi Retention)
+  - name: hormozi_onboarding_reinforcement
+    description: "CLOSER R on onboarding: re-clarify goal, re-label problem, re-overview pain. Quick win on the call. Service-first upsell (48% ascension). Buying window. Identity shift."
+    source: "0013_os_business_matrix_hormozi_retention.md"
+  # BAMFAM (Hormozi + Platten)
+  - name: bamfam_every_stage
+    description: "Book A Meeting From A Meeting at every touchpoint. Sales call → onboarding call → kickoff call. No client ever leaves without a next meeting."
+    source: "0008_os_business_matrix_hormozi_sales.md"
+
+# ---- Onboarding-Specific Settings ----
+onboarding:
+  automation_level: 90             # percent automated
+  manual_steps:
+    - booking_onboarding_call
+    - onboarding_call
+    - kickoff_call
+  trigger_form_fields:
+    - company_name
+    - email
+    - address
+    - price
+    - package
+    - service
+  payment_follow_up:
+    check_after: 24                # hours
+    auto_sequence_steps: 3
+    manual_escalation: true
+  gift:
+    enabled: true
+    budget: 100                    # USD
+    trigger: "payment_confirmed"
+  group_chat:
+    platform: "whatsapp"           # whatsapp | slack | teams
+    create_before_payment: true
+  client_dashboard:
+    components:
+      - roadmap
+      - onboarding_form
+      - file_storage
+      - call_recordings
+    branded: true
+  onboarding_call:
+    target_booking: "24-72h"       # hours after close
+    format: "one_on_one"
+  kickoff_call:
+    target_booking: "up_to_5_days" # after onboarding call
+    format: "one_to_many"

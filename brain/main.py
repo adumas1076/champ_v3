@@ -727,6 +727,79 @@ async def livekit_dispatch(request: Request):
         )
 
 
+# ---- AIOSCP Discovery Endpoints ----
+
+@app.get("/v1/aioscp/operators")
+async def aioscp_list_operators():
+    """List all registered operators with their AIOSCP manifests."""
+    from operators.aioscp_bridge import generate_manifest, get_os_capabilities
+    from operators.registry import registry
+    from dataclasses import asdict
+
+    operators = []
+    for name in registry.list_operators():
+        manifest = registry.get_manifest(name)
+        if manifest:
+            m = asdict(manifest)
+            # Clean up handler references (not serializable)
+            for cap in m.get("capabilities", []):
+                cap.pop("handler", None)
+            operators.append(m)
+
+    return {"operators": operators, "count": len(operators)}
+
+
+@app.get("/v1/aioscp/operators/{operator_name}/capabilities")
+async def aioscp_operator_capabilities(operator_name: str):
+    """Get AIOSCP capabilities for a specific operator."""
+    from operators.registry import registry
+    from dataclasses import asdict
+
+    caps = registry.get_capabilities(operator_name)
+    if not caps:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Operator '{operator_name}' not found"},
+        )
+
+    result = []
+    for cap in caps:
+        c = asdict(cap)
+        c.pop("handler", None)
+        result.append(c)
+
+    return {"operator": operator_name, "capabilities": result, "count": len(result)}
+
+
+@app.post("/v1/aioscp/estimate")
+async def aioscp_estimate_cost(request: Request):
+    """
+    Estimate cost before executing a task.
+    Pass a list of capability IDs that would be used.
+
+    Example: POST /v1/aioscp/estimate
+    {"capabilities": ["browse_url", "analyze_screen", "ask_brain"]}
+    """
+    from operators.registry import registry
+
+    body = await request.json()
+    capability_ids = body.get("capabilities", [])
+
+    if not capability_ids:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Missing 'capabilities' list"},
+        )
+
+    estimate = registry.estimate_task_cost(capability_ids)
+
+    return {
+        "capabilities": capability_ids,
+        "estimated_cost": estimate,
+        "count": len(capability_ids),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 

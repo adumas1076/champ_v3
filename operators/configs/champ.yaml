@@ -1,0 +1,77 @@
+# ============================================
+# Champ — Operator Config
+# Anthony's personal AI agent. Not for sale.
+# This is the REFERENCE config. Future operators
+# follow this same format.
+# ============================================
+
+name: champ
+display_name: Champ
+description: Personal AI creative partner. Built to build. Born to create.
+owner: anthony
+
+# ---- RESPOND: Voice Configuration ----
+voice:
+  provider: openai          # openai | elevenlabs | deepgram (future)
+  voice: ash                # OpenAI Realtime voice ID
+  temperature: 0.8
+
+# ---- THINK: Persona / Instructions ----
+# Can be inline or loaded from a file:
+persona_file: persona/champ_core.md
+
+# ---- ACT: Tool Permissions ----
+# null = ALL OS tools (full access)
+# list = only these specific tools
+tool_permissions: null
+
+# ---- INPUT: Channel Configuration ----
+channels:
+  voice: true
+  text: true
+  video: true               # Webcam / screen share input
+  screen_share: true
+
+# ---- Boundaries ----
+# What this operator will NOT do.
+boundaries: []
+
+# ---- Escalation Rules ----
+# When to hand off to another operator.
+escalation: []
+
+# ============================================
+# TEMPLATE: Copy this file for new operators.
+# Only change what's different.
+# The OS handles everything else.
+# ============================================
+#
+# Example for a new operator (billy.yaml):
+#
+# name: billy
+# display_name: Billy
+# description: Billing specialist and sales closer.
+# owner: platform
+#
+# voice:
+#   provider: openai
+#   voice: ballad
+#   temperature: 0.7
+#
+# persona_file: persona/billy_persona.md
+#
+# tool_permissions:
+#   - browse_url
+#   - google_search
+#   - ask_brain
+#   - analyze_screen
+#
+# boundaries:
+#   - "Never discuss pricing outside of approved rate cards"
+#   - "Never commit to timelines without checking with the team"
+#
+# escalation:
+#   - trigger: "user asks for technical help"
+#     hand_off_to: champ
+#   - trigger: "user wants to schedule something"
+#     hand_off_to: sadie

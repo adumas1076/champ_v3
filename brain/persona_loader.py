@@ -1,9 +1,11 @@
 # ============================================
-# CHAMP V3 — Persona V1.6.1 Loader
-# Loads Champ's persona and injects as system
-# prompt into every LiteLLM request.
+# CHAMP V3 — Persona Loader (Split Architecture)
+# Loads operator persona in layers:
+#   1. Core persona (who they ARE)
+#   2. Memory blocks (user context)
+# Mode instructions are handled by ContextBuilder.
+# Tool instructions are handled by BaseOperator.
 # ============================================
-# "Built to build. Born to create."
 
 import logging
 from pathlib import Path
@@ -25,12 +27,19 @@ FALLBACK_PERSONA = (
 
 class PersonaLoader:
     """
-    Loads the Champ persona from disk and serves it as the system prompt.
+    Loads the operator persona from disk in layers.
+
+    Split architecture:
+    - Core persona (champ_core.md) → who the operator IS
+    - Memory blocks (memory_*.md) → user/domain context
+    - Mode instructions → handled by ContextBuilder (not here)
+    - Tool instructions → handled by BaseOperator (not here)
 
     Features:
     - Loads from persona directory on startup
     - Falls back to hardcoded persona if file missing
     - Hot-reload without restart via reload()
+    - Loads memory block files alongside core persona
     """
 
     def __init__(self, settings: Settings):
@@ -39,15 +48,16 @@ class PersonaLoader:
         self._persona_path: Path | None = None
 
     async def load(self) -> None:
-        """Load persona from file on startup."""
+        """Load persona + memory blocks from files on startup."""
         persona_dir = self.settings.persona_dir
         persona_file = persona_dir / self.settings.default_persona
 
+        # 1. Load core persona
         if persona_file.exists():
             self._persona_path = persona_file
             self._persona_text = persona_file.read_text(encoding="utf-8")
             logger.info(
-                f"Persona loaded: {persona_file.name} "
+                f"Core persona loaded: {persona_file.name} "
                 f"({len(self._persona_text)} chars)"
             )
         else:
@@ -55,6 +65,27 @@ class PersonaLoader:
             logger.warning(
                 f"Persona file not found at {persona_file}, "
                 f"using fallback persona"
+            )
+
+        # 2. Load memory blocks (memory_*.md files in persona dir)
+        memory_blocks = []
+        for block_file in sorted(persona_dir.glob("memory_*.md")):
+            try:
+                block_text = block_file.read_text(encoding="utf-8")
+                memory_blocks.append(block_text)
+                logger.info(
+                    f"Memory block loaded: {block_file.name} "
+                    f"({len(block_text)} chars)"
+                )
+            except Exception as e:
+                logger.error(f"Failed to load memory block {block_file.name}: {e}")
+
+        # 3. Compose: core persona + memory blocks
+        if memory_blocks:
+            self._persona_text += "\n\n---\n\n" + "\n\n---\n\n".join(memory_blocks)
+            logger.info(
+                f"Persona composed: core + {len(memory_blocks)} memory blocks = "
+                f"{len(self._persona_text)} chars total"
             )
 
     def get_persona(self) -> str:

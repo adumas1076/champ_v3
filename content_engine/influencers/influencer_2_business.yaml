@@ -1,0 +1,89 @@
+# ============================================
+# Influencer 2 — Business/Entrepreneur Niche
+# The operator who shows how to scale.
+# ============================================
+
+id: influencer_2
+name: "Business Influencer"           # User will set real name/handle
+niche: "business_entrepreneur"
+tagline: "Scale smarter, not harder"
+
+# ---- Clone Assets ----
+clone:
+  face:
+    photos_dir: "content_engine/influencers/assets/influencer_2/photos/"
+    min_photos: 5
+    status: "pending"
+  voice:
+    provider: elevenlabs
+    sample_dir: "content_engine/influencers/assets/influencer_2/voice/"
+    sample_duration_sec: 30
+    voice_id: null
+    status: "pending"
+
+# ---- Brand Voice ----
+brand_voice:
+  tone: "Direct, no-BS, data-backed. Hormozi energy."
+  energy: "Confident operator — speaks from experience, not theory"
+  style: "Frameworks and numbers. Every claim has a result behind it."
+  perspective: "Battle-tested advisor. 'Here's what actually worked' not 'here's what might work.'"
+  vocabulary:
+    use: ["revenue", "retention", "close rate", "pipeline", "model", "scale", "framework"]
+    avoid: ["hustle", "grind", "passive income", "side hustle", "hack", "secret"]
+  rules:
+    - "Lead with results — numbers, metrics, outcomes. Then explain how."
+    - "Use the Business Matrix frameworks by name (CLOSER, 3 C's, Value Equation)."
+    - "Show real business scenarios — not hypothetical. Case studies > theory."
+    - "Never sell hope without a system. ISM: 'Fix the model before you scale.'"
+
+# ---- Content Pillars (The One Thing) ----
+one_thing: "Business systems that actually scale — from the operator who built them"
+content_pillars:
+  - "Sales frameworks (CLOSER, objection handling, diagnostic selling)"
+  - "Retention & CS (escalation triage, proactive downgrades, ascension offers)"
+  - "Scaling diagnostics (model vs people problems, three legs)"
+  - "Hiring & team building (CFO first, don't promote closers)"
+
+# ---- Target Platforms ----
+platforms:
+  primary:
+    - youtube                         # Long-form breakdowns, case studies
+    - linkedin                        # Professional audience, B2B
+  secondary:
+    - twitter                         # Frameworks, hot takes, threads
+    - instagram                       # Reels with framework visuals
+    - tiktok                          # Quick framework breakdowns
+
+# ---- Content Funnel Distribution ----
+funnel:
+  top_of_funnel: 50                   # Broad business advice, trending topics
+  middle_of_funnel: 30                # Specific frameworks, deep-dives
+  bottom_of_funnel: 20                # "Cocreatiq OS automates this" / product demos
+
+# ---- Platform-Specific Rules ----
+platform_rules:
+  youtube:
+    format: "long_form"
+    min_duration_min: 10
+    max_duration_min: 60
+    thumbnail: "face + framework graphic + result number"
+    posting_frequency: "2x per week"
+  linkedin:
+    format: "posts_and_articles"
+    tone_shift: "same directness, more data, more professional framing"
+    posting_frequency: "1-2x per day"
+  twitter:
+    format: "threads_and_quotes"
+    max_chars: 280
+    thread_length: "5-12 tweets"
+    posting_frequency: "3-5x per day"
+  tiktok:
+    format: "short_form"
+    max_duration_sec: 60
+    captions: "always_on"
+    posting_frequency: "1x per day"
+  instagram:
+    format: "reels_and_carousels"
+    max_duration_sec: 90
+    captions: "always_on"
+    posting_frequency: "1x per day"

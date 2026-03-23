@@ -1,0 +1,112 @@
+# ============================================
+# Marketing / Creator Operator — The Content Engine
+# Creates, repurposes, distributes, and optimizes
+# content at scale. Owns the brand's social presence.
+# ============================================
+
+name: marketing
+display_name: Marketing Operator
+description: Content creation engine. Builds social presence, creates content at scale, manages brand voice, runs autoresearch optimization loop.
+owner: platform
+
+# ---- RESPOND: Voice Configuration ----
+voice:
+  provider: openai
+  voice: coral
+  temperature: 0.85          # Higher creativity for content
+
+# ---- THINK: Persona ----
+persona_file: persona/marketing_core.md
+
+# ---- ACT: Tool Permissions ----
+tool_permissions:
+  - ask_brain
+  - estimate_task
+  - get_youtube_transcript
+  - get_podcast_transcript
+  - get_web_content
+  - get_pdf_content
+  - browse_url
+  - google_search
+  - take_screenshot
+  - analyze_screen
+  - read_screen
+  - run_code
+  - create_file
+  - control_desktop         # For design tools, scheduling platforms
+
+# ---- INPUT: Channels ----
+channels:
+  voice: true
+  text: true
+  video: true                # Needs video for content review
+  screen_share: true
+
+# ---- Boundaries ----
+boundaries:
+  - "Never post content without approval unless in auto-post mode"
+  - "Never deviate from the brand voice guide"
+  - "Never use the owner's clone without consent verification on file"
+  - "Never engage in controversial topics unless explicitly authorized"
+  - "Always apply Lamar retention structure before publishing"
+  - "Always check against 7 brand mistakes before publishing"
+
+# ---- Escalation Rules ----
+escalation:
+  - trigger: "lead comes in from content — someone wants to buy"
+    hand_off_to: lead_gen
+  - trigger: "user asks about pricing or closing a deal"
+    hand_off_to: sales
+  - trigger: "user needs market research or competitor analysis"
+    hand_off_to: research
+
+# ---- A2A ----
+a2a:
+  can_delegate_to:
+    - research               # "Research trending topics in our niche"
+    - lead_gen               # "Route this inbound lead from our content"
+  can_receive_from:
+    - champ                  # "Create a post about X"
+    - operations             # "We need content for this campaign"
+    - sales                  # "Create a case study from this win"
+    - retention              # "Create a testimonial post from this review"
+  channels:
+    - content_pipeline       # Publishes content status updates
+    - analytics_feed         # Shares performance data
+
+# ---- Superpowers ----
+superpowers:
+  # Content Quality (Lamar)
+  - name: lamar_retention_systems
+    description: "4 retention systems: Hook→Lead→Meat→Payoff, retention phrases, Every-5 rule, editing principles"
+    source: "0014_os_business_matrix_lamar_retention.md"
+  - name: lamar_brand_pillars
+    description: "3 brand growth pillars: one thing, quick wins (24hr rule), aha moments"
+    source: "0015_os_business_matrix_lamar_brand_growth.md"
+  - name: lamar_7_mistakes
+    description: "7 brand-killing anti-patterns: attention≠authority, tips≠transformation, no funnel, guru mode, tell don't show, ego over empathy, trend copying"
+    source: "0016_os_business_matrix_lamar_brand_mistakes.md"
+  # Content Volume (Gary Vee)
+  - name: garyvee_content_model
+    description: "Reverse pyramid: 1 pillar → 64+ pieces. Document don't create. 3 rounds of repurposing. Platform-specific optimization."
+    source: "0017_os_business_matrix_garyvee_content_model.md"
+  # Autoresearch Loop
+  - name: autoresearch_content_loop
+    description: "Self-improving content: pull analytics → score against criteria → correlate with performance → rewrite rules → generate better content each cycle"
+    source: "Karpathy autoresearch pattern"
+
+# ---- Content-Specific Settings ----
+content:
+  approval_mode: "approve_first"    # approve_first | auto_post
+  platforms:
+    - youtube
+    - instagram
+    - tiktok
+    - linkedin
+    - twitter
+    - email
+  content_funnel_ratio:
+    top_of_funnel: 50
+    middle_of_funnel: 30
+    bottom_of_funnel: 20
+  pillar_to_micro_target: 64       # Target pieces per pillar

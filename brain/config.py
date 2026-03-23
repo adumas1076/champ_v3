@@ -29,7 +29,15 @@ class Settings(BaseSettings):
 
     # --- Persona ---
     persona_dir: Path = Path(__file__).resolve().parent.parent / "persona"
-    default_persona: str = "champ_persona_v1.6.1.md"
+    default_persona: str = "champ_core.md"
+
+    # --- Multi-User ---
+    default_user: str = Field(default="anthony", alias="DEFAULT_USER")
+
+    # --- Letta Memory (optional — graceful degradation if not configured) ---
+    letta_base_url: str = Field(default="", alias="LETTA_BASE_URL")
+    letta_model: str = Field(default="openai/gpt-4o-mini", alias="LETTA_MODEL")
+    letta_embedding: str = Field(default="openai/text-embedding-3-small", alias="LETTA_EMBEDDING")
 
     # --- Ears Sidecar ---
     ears_health_url: str = Field(

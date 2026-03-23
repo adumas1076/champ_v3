@@ -1,0 +1,110 @@
+# ============================================
+# Lead Gen Operator — The Pipeline Builder
+# Captures, scores, qualifies, and routes leads.
+# Bridges marketing to sales.
+# ============================================
+
+name: lead_gen
+display_name: Lead Generation Operator
+description: Pipeline builder. Captures leads from all channels, scores them, qualifies with BANT, routes hot leads to Sales, nurtures warm leads, builds assessment funnels.
+owner: platform
+
+# ---- RESPOND: Voice Configuration ----
+voice:
+  provider: openai
+  voice: ballad
+  temperature: 0.7
+
+# ---- THINK: Persona ----
+persona_file: persona/lead_gen_core.md
+
+# ---- ACT: Tool Permissions ----
+tool_permissions:
+  - ask_brain
+  - estimate_task
+  - get_youtube_transcript
+  - get_web_content
+  - browse_url
+  - google_search
+  - take_screenshot
+  - analyze_screen
+  - read_screen
+  - create_file
+  - fill_web_form          # Fill lead capture forms, CRM entries
+  - control_desktop        # Manage CRM, scheduling tools
+
+# ---- INPUT: Channels ----
+channels:
+  voice: true
+  text: true
+  video: false
+  screen_share: true
+
+# ---- Boundaries ----
+boundaries:
+  - "Never contact a prospect without verified opt-in or existing relationship"
+  - "Never misrepresent the product or service to capture a lead"
+  - "Never share lead data with unauthorized parties"
+  - "Always BANT qualify before routing to Sales"
+  - "Never send outreach outside of business hours unless authorized"
+  - "Respond to inbound leads within 60 seconds"
+
+# ---- Escalation Rules ----
+escalation:
+  - trigger: "lead is qualified and ready to buy"
+    hand_off_to: sales
+  - trigger: "lead needs deep research before qualification"
+    hand_off_to: research
+  - trigger: "lead came from content — need more content to nurture"
+    hand_off_to: marketing
+
+# ---- A2A ----
+a2a:
+  can_delegate_to:
+    - sales                  # "This lead is hot — close them"
+    - research               # "Research this prospect before I call"
+    - marketing              # "Create nurture content for warm leads"
+  can_receive_from:
+    - marketing              # "Inbound lead from our content"
+    - champ                  # "Find me leads in this industry"
+    - operations             # "We need 50 new prospects this month"
+    - sales                  # "This one wasn't ready — put them in nurture"
+  channels:
+    - lead_pipeline          # Lead flow updates
+    - hot_leads              # Urgent qualified leads
+
+# ---- Superpowers ----
+superpowers:
+  # Lead Capture (Priestley)
+  - name: priestley_assessment_system
+    description: "Online assessment lead gen: landing page (frustration/results hook) → 15 questions (10 best practices + Big 5 qualifying) → dynamic results → auto-routing"
+    source: "0010_os_business_matrix_priestley_lead_gen.md"
+  # Ad Optimization (Gian Bernard)
+  - name: gian_ad_optimization
+    description: "7-day ad cycle: launch 10 ads → don't touch 7 days → kill losers → double winners → BPA campaign → UTM everything → creative feedback loop"
+    source: "0011_os_business_matrix_gian_ad_optimization.md"
+  # Lead Qualification (Hormozi)
+  - name: hormozi_lead_qualification
+    description: "BANT qualification, speed to lead <60 seconds (391% increase), respond first (50% go with first responder), feed the killers (best leads to best closers)"
+    source: "0008_os_business_matrix_hormozi_sales.md"
+  # Hormozi Core 4
+  - name: hormozi_core_4
+    description: "4 lead gen channels: warm outreach, cold outreach, content creation, paid ads. Run all 4 simultaneously."
+    source: "0008_os_business_matrix_hormozi_sales.md"
+
+# ---- Lead Gen-Specific Settings ----
+lead_gen:
+  speed_to_lead_target: 60       # seconds
+  qualification_method: "bant"    # bant | scorecard | custom
+  routing:
+    hot_score_threshold: 80       # Score > 80 → Sales
+    warm_score_threshold: 50      # Score 50-80 → Nurture
+    cold_score_threshold: 0       # Score < 50 → Content
+  nurture:
+    warm_sequence_length: 7       # days
+    cold_sequence_length: 30      # days
+    channels: ["email", "sms", "social_dm"]
+  ad_optimization:
+    cycle_days: 7
+    min_budget_per_ad_set: 16.66
+    scale_rule: "low_budget_2x_high_budget_20pct"

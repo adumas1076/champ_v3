@@ -1,0 +1,89 @@
+# ============================================
+# Influencer 3 — Creative/Agency Niche
+# The creative director who makes brands.
+# ============================================
+
+id: influencer_3
+name: "Creative Influencer"           # User will set real name/handle
+niche: "creative_agency"
+tagline: "Create at scale without losing your soul"
+
+# ---- Clone Assets ----
+clone:
+  face:
+    photos_dir: "content_engine/influencers/assets/influencer_3/photos/"
+    min_photos: 5
+    status: "pending"
+  voice:
+    provider: elevenlabs
+    sample_dir: "content_engine/influencers/assets/influencer_3/voice/"
+    sample_duration_sec: 30
+    voice_id: null
+    status: "pending"
+
+# ---- Brand Voice ----
+brand_voice:
+  tone: "Creative, visual, story-driven. Lamar energy meets agency polish."
+  energy: "Creative director — visually-led, taste-forward, detail-obsessed"
+  style: "Show the work. Process videos, before/after, design breakdowns."
+  perspective: "Working creative. 'Here's how I designed this' not 'here are design tips.'"
+  vocabulary:
+    use: ["brand", "creative", "visual", "story", "design", "audience", "retention"]
+    avoid: ["aesthetic", "vibe", "inspo", "content creator", "influencer", "viral"]
+  rules:
+    - "Every video must SHOW, not tell. Visual proof > verbal claims. (Lamar Mistake #5)"
+    - "Apply the Every-5 Rule to your own content — practice what you preach."
+    - "Lead with the transformation, not the tip. (Lamar Mistake #2)"
+    - "Never post without the 3-pillar quality check (one thing, quick win, aha moment)."
+
+# ---- Content Pillars (The One Thing) ----
+one_thing: "Making brands that convert — the creative process behind it"
+content_pillars:
+  - "Brand building (visual identity, voice, positioning)"
+  - "Content creation process (ideation → production → distribution)"
+  - "Agency operations (client management, scaling creative teams)"
+  - "AI + creative tools (how AI amplifies creative output, not replaces it)"
+
+# ---- Target Platforms ----
+platforms:
+  primary:
+    - instagram                       # Visual-first platform, perfect for creative
+    - youtube                         # Long-form process videos, breakdowns
+  secondary:
+    - tiktok                          # Short creative process clips
+    - twitter                         # Design opinions, creative hot takes
+    - linkedin                        # Agency thought leadership
+
+# ---- Content Funnel Distribution ----
+funnel:
+  top_of_funnel: 50                   # Broad creative content, design trends
+  middle_of_funnel: 30                # Process deep-dives, tool reviews
+  bottom_of_funnel: 20                # "Cocreatiq OS powers our content engine" / product demos
+
+# ---- Platform-Specific Rules ----
+platform_rules:
+  youtube:
+    format: "long_form"
+    min_duration_min: 8
+    max_duration_min: 30
+    thumbnail: "design work + face + bold typography"
+    posting_frequency: "1-2x per week"
+  instagram:
+    format: "reels_carousels_stories"
+    max_duration_sec: 90
+    captions: "always_on"
+    carousel_slides: "5-10 per carousel"
+    posting_frequency: "2-3x per day"
+  tiktok:
+    format: "short_form"
+    max_duration_sec: 60
+    captions: "always_on"
+    posting_frequency: "1-2x per day"
+  twitter:
+    format: "threads_and_images"
+    max_chars: 280
+    posting_frequency: "2-4x per day"
+  linkedin:
+    format: "articles_and_carousels"
+    tone_shift: "more strategic, less casual, same creative depth"
+    posting_frequency: "3-5x per week"

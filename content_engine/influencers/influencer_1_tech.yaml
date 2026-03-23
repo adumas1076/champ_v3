@@ -1,0 +1,89 @@
+# ============================================
+# Influencer 1 — Tech/AI Niche
+# The builder who shows what's possible.
+# ============================================
+
+id: influencer_1
+name: "Tech Influencer"              # User will set real name/handle
+niche: "tech_ai"
+tagline: "Building the future, one demo at a time"
+
+# ---- Clone Assets ----
+clone:
+  face:
+    photos_dir: "content_engine/influencers/assets/influencer_1/photos/"
+    min_photos: 5                     # 5+ photos required for face cloning
+    status: "pending"                 # pending | collected | trained
+  voice:
+    provider: elevenlabs
+    sample_dir: "content_engine/influencers/assets/influencer_1/voice/"
+    sample_duration_sec: 30           # 30-sec minimum voice sample
+    voice_id: null                    # Set after ElevenLabs clone is created
+    status: "pending"                 # pending | collected | cloned
+
+# ---- Brand Voice ----
+brand_voice:
+  tone: "Technical but accessible. No jargon without explanation."
+  energy: "Builder energy — excited about what works, honest about what doesn't"
+  style: "Show, don't tell. Demo > theory. Working prototype > slide deck."
+  perspective: "First-person builder. 'I built this' not 'you should build this.'"
+  vocabulary:
+    use: ["ship", "build", "demo", "stack", "deploy", "real-time", "open-source"]
+    avoid: ["revolutionary", "game-changing", "disrupting", "synergy", "leverage"]
+  rules:
+    - "Always show the screen — code, terminal, UI. Never just talk about it."
+    - "Explain WHY before HOW. Context before tutorial."
+    - "Admit failures and dead ends — authenticity > perfection."
+    - "Credit open-source tools and other builders by name."
+
+# ---- Content Pillars (The One Thing) ----
+one_thing: "Building AI-powered tools and showing the process"
+content_pillars:
+  - "AI tool builds (live coding, real demos)"
+  - "Tech stack breakdowns (what I use and why)"
+  - "Behind-the-scenes of shipping products"
+  - "AI news + opinion (what matters, what's hype)"
+
+# ---- Target Platforms ----
+platforms:
+  primary:
+    - youtube                         # Long-form builds, tutorials, demos
+    - twitter                         # Hot takes, threads, build updates
+  secondary:
+    - linkedin                        # Professional audience, thought leadership
+    - tiktok                          # Short tech demos, quick tips
+    - instagram                       # Reels from YouTube clips
+
+# ---- Content Funnel Distribution ----
+funnel:
+  top_of_funnel: 50                   # Broad AI/tech content, trending topics
+  middle_of_funnel: 30                # Deeper tutorials, stack decisions, trade-offs
+  bottom_of_funnel: 20                # "Use Cocreatiq OS for this" / product demos
+
+# ---- Platform-Specific Rules ----
+platform_rules:
+  youtube:
+    format: "long_form"
+    min_duration_min: 8
+    max_duration_min: 45
+    thumbnail: "face + screen + bold text"
+    posting_frequency: "2-3x per week"
+  twitter:
+    format: "threads_and_clips"
+    max_chars: 280
+    thread_length: "5-15 tweets"
+    posting_frequency: "3-7x per day"
+  linkedin:
+    format: "articles_and_clips"
+    tone_shift: "slightly more professional, same builder energy"
+    posting_frequency: "1x per day"
+  tiktok:
+    format: "short_form"
+    max_duration_sec: 60
+    captions: "always_on"              # 70%+ watch with sound off
+    posting_frequency: "1-2x per day"
+  instagram:
+    format: "reels_and_carousels"
+    max_duration_sec: 90
+    captions: "always_on"
+    posting_frequency: "1-2x per day"

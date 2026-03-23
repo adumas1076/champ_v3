@@ -202,6 +202,36 @@ class SupabaseMemory:
 
         return "\n\n[MEMORY]\n" + "\n\n".join(sections)
 
+    # ---- Profile Data (for Letta sync) ----
+
+    async def get_profile_data(self, user_id: str = "anthony") -> dict:
+        """
+        Fetch raw profile data as a dict for syncing to Letta memory.human block.
+        Returns {key: {value, category, confidence}} or empty dict.
+        """
+        if not self._client:
+            return {}
+
+        try:
+            result = await self._client.table("mem_profile").select(
+                "key, value, category, confidence"
+            ).eq("user_id", user_id).execute()
+
+            if not result.data:
+                return {}
+
+            return {
+                row["key"]: {
+                    "value": row["value"],
+                    "category": row.get("category", "general"),
+                    "confidence": row.get("confidence", "medium"),
+                }
+                for row in result.data
+            }
+        except Exception as e:
+            logger.error(f"get_profile_data failed: {e}")
+            return {}
+
     # ---- Recent Messages ----
 
     async def get_recent_messages(

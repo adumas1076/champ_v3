@@ -1,6 +1,6 @@
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
-import VoiceCall from "./pages/VoiceCall";
+import VoiceCall from "./pages/VoiceCall_creative";
 import AvatarLab from "./pages/AvatarLab";
 
 const BRAIN_URL = import.meta.env.VITE_BRAIN_URL || "http://127.0.0.1:8100";

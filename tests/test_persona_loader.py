@@ -44,7 +44,8 @@ def test_fallback_when_file_missing():
     _run(loader.load())
 
     persona = loader.get_persona()
-    assert persona == FALLBACK_PERSONA
+    # Fallback persona is the base; memory_*.md blocks may also be appended
+    assert persona.startswith(FALLBACK_PERSONA), "Should start with fallback persona"
     assert "Champ" in persona
 
 

@@ -44,3 +44,4 @@ reference/
 .DS_Store
 Thumbs.db
 nul
+frontend/dist/

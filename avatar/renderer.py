@@ -66,9 +66,10 @@ class FlashHeadChunkGenerator:
         self._available = False
         self._chunk_count = 0
 
-    def load(self, reference_image_path: str) -> bool:
+    def load(self, reference_image_path: str, avatar_id: str | None = None) -> bool:
         """
         Initialize FlashHead pipeline and prepare the reference image.
+        Optionally loads LoRA weights for a specific avatar.
         Returns True if successful, False if unavailable.
         """
         try:
@@ -105,6 +106,16 @@ class FlashHeadChunkGenerator:
             )
 
             self._infer_params = get_infer_params()
+
+            # Try loading LoRA weights if avatar_id provided
+            if avatar_id:
+                try:
+                    from .training.train_lora import load_lora_weights
+                    if load_lora_weights(self._pipeline, avatar_id):
+                        logger.info(f"  LoRA adapter loaded for avatar '{avatar_id}'")
+                except Exception as e:
+                    logger.debug(f"  No LoRA weights for '{avatar_id}': {e}")
+
             self._available = True
             logger.info(
                 f"FlashHead pipeline ready "
@@ -473,7 +484,7 @@ class ChampAvatarRenderer:
     def _load_flashhead_full(self) -> bool:
         """Load FlashHead full diffusion pipeline (runs in thread pool)."""
         self._chunk_generator = FlashHeadChunkGenerator()
-        return self._chunk_generator.load(self.reference_image)
+        return self._chunk_generator.load(self.reference_image, avatar_id=self._avatar_id)
 
     def _load_split_pipeline(self) -> bool:
         """Load legacy split pipeline (runs in thread pool)."""

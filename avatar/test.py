@@ -594,9 +594,110 @@ def test_upscale_pipeline():
     return failed == 0
 
 
+def test_lora_pipeline():
+    """Test LoRA training infrastructure (no GPU required)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar -- LoRA Pipeline Test (no GPU required)")
+    print("=" * 60)
+
+    import tempfile
+    import os
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. Imports ──
+    print("\n[1] LoRA module imports...")
+    try:
+        from avatar.training.prepare_training_data import (
+            prepare_training_data, CHUNK_FRAMES, TARGET_FPS,
+            CHUNK_DURATION_SEC, AUDIO_SAMPLE_RATE, _write_wav, _load_audio_wav,
+        )
+        from avatar.training.train_lora import (
+            LoRATrainer, load_lora_weights,
+            DEFAULT_LORA_RANK, DEFAULT_LORA_ALPHA,
+            LORA_TARGET_MODULES,
+        )
+        check("All LoRA imports", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. Training data constants ──
+    print("\n[2] Training data constants...")
+    check("CHUNK_FRAMES = 33", CHUNK_FRAMES == 33)
+    check("TARGET_FPS = 25", TARGET_FPS == 25.0)
+    check("CHUNK_DURATION ~1.32s", abs(CHUNK_DURATION_SEC - 1.32) < 0.01)
+    check("AUDIO_SAMPLE_RATE = 16000", AUDIO_SAMPLE_RATE == 16000)
+
+    # ── 3. WAV I/O ──
+    print("\n[3] WAV file I/O...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_audio = np.sin(np.linspace(0, 2 * np.pi * 440, 16000)).astype(np.float32)
+        wav_path = os.path.join(tmpdir, "test.wav")
+
+        _write_wav(wav_path, test_audio)
+        check("WAV written", os.path.exists(wav_path))
+
+        loaded = _load_audio_wav(wav_path)
+        check("WAV loaded shape", len(loaded) == 16000)
+        check("WAV loaded dtype", loaded.dtype == np.float32)
+        # Allow some loss from int16 quantization
+        check("WAV roundtrip close", np.allclose(test_audio, loaded, atol=1e-3))
+
+    # ── 4. LoRA config ──
+    print("\n[4] LoRA configuration...")
+    check("Default rank = 16", DEFAULT_LORA_RANK == 16)
+    check("Default alpha = 32", DEFAULT_LORA_ALPHA == 32)
+    check("Target modules defined", len(LORA_TARGET_MODULES) == 8)
+    check("Targets include self_attn.q", "self_attn.q" in LORA_TARGET_MODULES)
+    check("Targets include cross_attn.v", "cross_attn.v" in LORA_TARGET_MODULES)
+
+    # ── 5. LoRATrainer init (no GPU) ──
+    print("\n[5] LoRATrainer initialization...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        trainer = LoRATrainer(
+            avatar_id="test_avatar",
+            training_data_dir=tmpdir,
+            lora_rank=8,
+            lora_alpha=16,
+            learning_rate=5e-5,
+            epochs=10,
+            output_dir=os.path.join(tmpdir, "lora_output"),
+        )
+        check("Trainer created", trainer is not None)
+        check("Trainer avatar_id", trainer.avatar_id == "test_avatar")
+        check("Trainer rank", trainer.lora_rank == 8)
+        check("Trainer alpha", trainer.lora_alpha == 16)
+        check("Trainer lr", trainer.learning_rate == 5e-5)
+        check("Trainer epochs", trainer.epochs == 10)
+
+        # load_lora_weights should return False for nonexistent avatar
+        check("load_lora_weights returns False for missing",
+              load_lora_weights(None, "nonexistent_avatar") == False)
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"LoRA Pipeline Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
 if __name__ == "__main__":
     success1 = test_pipeline()
     success2 = test_chunk_pipeline()
     success3 = test_training_pipeline()
     success4 = test_upscale_pipeline()
-    sys.exit(0 if (success1 and success2 and success3 and success4) else 1)
+    success5 = test_lora_pipeline()
+    sys.exit(0 if (success1 and success2 and success3 and success4 and success5) else 1)

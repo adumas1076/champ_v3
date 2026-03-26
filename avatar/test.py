@@ -694,10 +694,100 @@ def test_lora_pipeline():
     return failed == 0
 
 
+def test_gpu_backend():
+    """Test GPU backend abstraction (no GPU required)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar -- GPU Backend Test (no GPU required)")
+    print("=" * 60)
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. Imports ──
+    print("\n[1] GPU backend imports...")
+    try:
+        from avatar.gpu_backend import (
+            GPUBackend, LocalGPUBackend, ModalGPUBackend, create_backend,
+        )
+        from avatar import config
+        check("All GPU backend imports", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. Config ──
+    print("\n[2] GPU backend config...")
+    check("GPU_BACKEND setting exists", hasattr(config, 'GPU_BACKEND'))
+    check("GPU_BACKEND is string", isinstance(config.GPU_BACKEND, str))
+
+    # ── 3. LocalGPUBackend ──
+    print("\n[3] LocalGPUBackend...")
+    local = LocalGPUBackend()
+    check("Created LocalGPUBackend", local is not None)
+    check("Not available before init", not local.available)
+    local.reset()  # Should not crash
+    check("Reset before init OK", True)
+    local.close()
+    check("Close before init OK", True)
+
+    # generate_chunk returns empty when not initialized
+    result = local.generate_chunk(np.zeros(16000, dtype=np.float32))
+    check("generate_chunk returns empty when not init", len(result) == 0)
+
+    # ── 4. ModalGPUBackend ──
+    print("\n[4] ModalGPUBackend...")
+    modal_be = ModalGPUBackend()
+    check("Created ModalGPUBackend", modal_be is not None)
+    check("Not available before init", not modal_be.available)
+    modal_be.reset()
+    check("Reset before init OK", True)
+    modal_be.close()
+    check("Close before init OK", True)
+
+    # ── 5. create_backend factory ──
+    print("\n[5] create_backend factory...")
+    be_local = create_backend("local")
+    check("create_backend('local') returns LocalGPUBackend",
+          isinstance(be_local, LocalGPUBackend))
+
+    be_modal = create_backend("modal")
+    check("create_backend('modal') returns ModalGPUBackend",
+          isinstance(be_modal, ModalGPUBackend))
+
+    be_auto = create_backend("auto")
+    check("create_backend('auto') returns a GPUBackend",
+          isinstance(be_auto, GPUBackend))
+
+    try:
+        create_backend("invalid_mode")
+        check("create_backend('invalid') raises ValueError", False)
+    except ValueError:
+        check("create_backend('invalid') raises ValueError", True)
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"GPU Backend Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
 if __name__ == "__main__":
     success1 = test_pipeline()
     success2 = test_chunk_pipeline()
     success3 = test_training_pipeline()
     success4 = test_upscale_pipeline()
     success5 = test_lora_pipeline()
-    sys.exit(0 if (success1 and success2 and success3 and success4 and success5) else 1)
+    success6 = test_gpu_backend()
+    all_pass = success1 and success2 and success3 and success4 and success5 and success6
+    sys.exit(0 if all_pass else 1)

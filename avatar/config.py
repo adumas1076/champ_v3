@@ -160,6 +160,9 @@ IDX_HEAD_ROLL = 54
 DEVICE = os.getenv("CHAMP_AVATAR_DEVICE", "cuda")  # "cuda" or "cpu"
 DTYPE = "float16"  # Use fp16 on GPU for speed
 
+# GPU backend: "auto" (try local, fall back to modal), "local", or "modal"
+GPU_BACKEND = os.getenv("CHAMP_GPU_BACKEND", "auto")
+
 # ─── Feature Flags ────────────────────────────────────────────────────────────
 
 AVATAR_ENABLED = os.getenv("CHAMP_AVATAR_ENABLED", "false").lower() == "true"

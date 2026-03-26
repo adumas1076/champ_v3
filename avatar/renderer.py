@@ -36,6 +36,7 @@ from .motion import MotionPredictor
 from .idle import IdleAnimator
 from .smoothing import MotionSmoother, TransitionBlender, AnticipatoryMotion
 from .upscale import FrameUpscaler
+from .gpu_backend import GPUBackend, create_backend
 
 logger = logging.getLogger("champ.avatar.renderer")
 
@@ -394,6 +395,7 @@ class ChampAvatarRenderer:
 
         # FlashHead full pipeline components (FLASHHEAD_FULL mode)
         self._chunk_generator: FlashHeadChunkGenerator | None = None
+        self._gpu_backend: GPUBackend | None = None
         self._chunk_audio: ChunkAudioAccumulator | None = None
         self._speaking_frame_buffer: deque = deque()  # Buffered frames from chunks
 
@@ -482,9 +484,12 @@ class ChampAvatarRenderer:
         logger.info("CHAMP avatar renderer ready")
 
     def _load_flashhead_full(self) -> bool:
-        """Load FlashHead full diffusion pipeline (runs in thread pool)."""
-        self._chunk_generator = FlashHeadChunkGenerator()
-        return self._chunk_generator.load(self.reference_image, avatar_id=self._avatar_id)
+        """Load FlashHead full diffusion pipeline via GPU backend (runs in thread pool)."""
+        self._gpu_backend = create_backend(mode=config.GPU_BACKEND)
+        success = self._gpu_backend.initialize(self.reference_image, avatar_id=self._avatar_id)
+        if success:
+            logger.info(f"  GPU backend: {type(self._gpu_backend).__name__}")
+        return success
 
     def _load_split_pipeline(self) -> bool:
         """Load legacy split pipeline (runs in thread pool)."""
@@ -517,8 +522,8 @@ class ChampAvatarRenderer:
                 # Flush any remaining audio as a final chunk
                 if self._chunk_audio and self._chunk_audio.has_audio:
                     await self._generate_flashhead_chunk()
-                if self._chunk_generator:
-                    self._chunk_generator.reset()
+                if self._gpu_backend:
+                    self._gpu_backend.reset()
             else:
                 self._motion_predictor.clear_context()
             await self._frame_queue.put(AudioSegmentEnd())
@@ -550,7 +555,7 @@ class ChampAvatarRenderer:
         loop = asyncio.get_event_loop()
         frames = await loop.run_in_executor(
             self._executor,
-            self._chunk_generator.generate_chunk,
+            self._gpu_backend.generate_chunk,
             audio_array,
         )
 
@@ -568,8 +573,8 @@ class ChampAvatarRenderer:
         if self.render_mode == RenderMode.FLASHHEAD_FULL:
             if self._chunk_audio:
                 self._chunk_audio.clear()
-            if self._chunk_generator:
-                self._chunk_generator.reset()
+            if self._gpu_backend:
+                self._gpu_backend.reset()
             self._speaking_frame_buffer.clear()
         else:
             if self._audio_extractor:
@@ -740,5 +745,7 @@ class ChampAvatarRenderer:
         """Shutdown renderer and release resources."""
         self._running = False
         self._speaking_frame_buffer.clear()
+        if self._gpu_backend:
+            self._gpu_backend.close()
         self._executor.shutdown(wait=False)
         logger.info("CHAMP avatar renderer closed")

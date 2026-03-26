@@ -782,6 +782,135 @@ def test_gpu_backend():
     return failed == 0
 
 
+def test_body_motion():
+    """Test body motion system (no GPU required)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar -- Body Motion Test (no GPU required)")
+    print("=" * 60)
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. Imports ──
+    print("\n[1] Body motion imports...")
+    try:
+        from avatar.body.gesture_predictor import (
+            GestureClass, GesturePrediction, GesturePredictor,
+        )
+        from avatar.body.body_compositor import (
+            BodyCompositor, BodyTemplate, COMPOSITE_WIDTH, COMPOSITE_HEIGHT,
+        )
+        check("All body motion imports", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. GestureClass enum ──
+    print("\n[2] GestureClass enum...")
+    check("8 gesture classes", len(GestureClass) == 8)
+    check("NEUTRAL exists", GestureClass.NEUTRAL.value == "neutral")
+    check("EMPHASIS exists", GestureClass.EMPHASIS.value == "emphasis")
+    check("OPEN_PALMS exists", GestureClass.OPEN_PALMS.value == "open_palms")
+    check("THINKING exists", GestureClass.THINKING.value == "thinking")
+
+    # ── 3. GesturePredictor ──
+    print("\n[3] GesturePredictor...")
+    predictor = GesturePredictor()
+
+    # Silence -> neutral
+    silence = np.zeros(16000, dtype=np.float32)
+    pred = predictor.predict(silence)
+    check("Silence predicts neutral", pred.gesture == GestureClass.NEUTRAL)
+    check("Prediction has intensity", 0.0 <= pred.intensity <= 1.0)
+    check("Prediction has confidence", 0.0 <= pred.confidence <= 1.0)
+    check("Prediction has duration", pred.duration_sec > 0)
+
+    # Loud audio -> not neutral
+    loud = np.random.randn(16000).astype(np.float32) * 0.5
+    predictor.reset()
+    # Need to push through hold frames
+    for _ in range(5):
+        pred_loud = predictor.predict(loud)
+    check("Loud audio has higher intensity", pred_loud.intensity > pred.intensity)
+
+    # Very short audio
+    short = np.zeros(10, dtype=np.float32)
+    pred_short = predictor.predict(short)
+    check("Short audio defaults to neutral", pred_short.gesture == GestureClass.NEUTRAL)
+
+    # Reset
+    predictor.reset()
+    check("Predictor reset OK", True)
+
+    # ── 4. BodyTemplate ──
+    print("\n[4] BodyTemplate (procedural)...")
+    template = BodyTemplate(GestureClass.NEUTRAL)
+    frame = template.get_frame()
+    check("Template frame shape", frame.shape == (COMPOSITE_HEIGHT, COMPOSITE_WIDTH, 4),
+          f"got {frame.shape}")
+    check("Template frame dtype", frame.dtype == np.uint8)
+    check("Template has content (not all zero)", frame.sum() > 0)
+
+    template.reset()
+    check("Template reset OK", True)
+
+    # ── 5. BodyCompositor ──
+    print("\n[5] BodyCompositor...")
+    compositor = BodyCompositor()
+
+    # Create test face frame (512x512 RGBA)
+    face = np.random.randint(100, 200, (512, 512, 4), dtype=np.uint8)
+    face[:, :, 3] = 255
+
+    # Composite without gesture
+    result = compositor.composite(face)
+    check("Composite shape", result.shape == (COMPOSITE_HEIGHT, COMPOSITE_WIDTH, 4),
+          f"got {result.shape}")
+    check("Composite dtype", result.dtype == np.uint8)
+
+    # Composite with gesture
+    gesture = GesturePrediction(
+        gesture=GestureClass.EMPHASIS,
+        intensity=0.8,
+        confidence=0.7,
+        duration_sec=1.0,
+    )
+    result_gesture = compositor.composite(face, gesture=gesture)
+    check("Composite with gesture shape",
+          result_gesture.shape == (COMPOSITE_HEIGHT, COMPOSITE_WIDTH, 4))
+
+    # Custom output size
+    result_custom = compositor.composite(face, output_size=(1024, 1024))
+    check("Custom output size", result_custom.shape == (1024, 1024, 4),
+          f"got {result_custom.shape}")
+
+    # Blend mask
+    mask = compositor._create_blend_mask(100, 100)
+    check("Blend mask shape", mask.shape == (100, 100))
+    check("Blend mask center ~1.0", mask[50, 50] > 0.9)
+    check("Blend mask edge ~0.0", mask[0, 0] < 0.1)
+
+    compositor.reset()
+    check("Compositor reset OK", True)
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"Body Motion Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
 if __name__ == "__main__":
     success1 = test_pipeline()
     success2 = test_chunk_pipeline()
@@ -789,5 +918,6 @@ if __name__ == "__main__":
     success4 = test_upscale_pipeline()
     success5 = test_lora_pipeline()
     success6 = test_gpu_backend()
-    all_pass = success1 and success2 and success3 and success4 and success5 and success6
+    success7 = test_body_motion()
+    all_pass = success1 and success2 and success3 and success4 and success5 and success6 and success7
     sys.exit(0 if all_pass else 1)

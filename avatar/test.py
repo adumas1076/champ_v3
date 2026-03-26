@@ -507,8 +507,96 @@ def test_training_pipeline():
     return failed == 0
 
 
+def test_upscale_pipeline():
+    """Test the upscaling components (bilinear fallback, no GPU required)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar -- Upscale Pipeline Test (no GPU required)")
+    print("=" * 60)
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. Imports ──
+    print("\n[1] Upscale imports...")
+    try:
+        from avatar.upscale import FrameUpscaler
+        from avatar import config
+        check("FrameUpscaler import", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. Config values ──
+    print("\n[2] Upscale config...")
+    check("VIDEO_UPSCALE_FACTOR exists", hasattr(config, 'VIDEO_UPSCALE_FACTOR'))
+    check("VIDEO_UPSCALE_FACTOR is 2 or 4", config.VIDEO_UPSCALE_FACTOR in (2, 4))
+
+    # ── 3. FrameUpscaler creation ──
+    print("\n[3] FrameUpscaler (bilinear fallback)...")
+    upscaler = FrameUpscaler(scale=2)
+    check("Created with scale=2", upscaler.scale == 2)
+    check("Not available before load", not upscaler.available)
+
+    # Don't call load() — Real-ESRGAN likely not installed
+    # Test bilinear fallback directly
+    check("Output size correct", upscaler.output_size == (1024, 1024))
+
+    upscaler4 = FrameUpscaler(scale=4)
+    check("Created with scale=4", upscaler4.scale == 4)
+    check("Output size 4x correct", upscaler4.output_size == (2048, 2048))
+
+    # ── 4. Bilinear upscale (always works) ──
+    print("\n[4] Bilinear upscale (fallback)...")
+
+    # Create a test RGBA frame
+    test_frame = np.random.randint(0, 255, (512, 512, 4), dtype=np.uint8)
+
+    # 2x upscale
+    result_2x = upscaler.upscale(test_frame)
+    check("2x output shape", result_2x.shape == (1024, 1024, 4),
+          f"got {result_2x.shape}")
+    check("2x output dtype uint8", result_2x.dtype == np.uint8)
+
+    # 4x upscale
+    result_4x = upscaler4.upscale(test_frame)
+    check("4x output shape", result_4x.shape == (2048, 2048, 4),
+          f"got {result_4x.shape}")
+    check("4x output dtype uint8", result_4x.dtype == np.uint8)
+
+    # RGB frame (no alpha)
+    test_rgb = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
+    result_rgb = upscaler.upscale(test_rgb)
+    check("RGB upscale shape", result_rgb.shape == (1024, 1024, 3),
+          f"got {result_rgb.shape}")
+
+    # Batch upscale
+    batch = [test_frame, test_frame, test_frame]
+    results = upscaler.upscale_batch(batch)
+    check("Batch returns 3 frames", len(results) == 3)
+    check("Batch frames correct shape",
+          all(r.shape == (1024, 1024, 4) for r in results))
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"Upscale Pipeline Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
 if __name__ == "__main__":
     success1 = test_pipeline()
     success2 = test_chunk_pipeline()
     success3 = test_training_pipeline()
-    sys.exit(0 if (success1 and success2 and success3) else 1)
+    success4 = test_upscale_pipeline()
+    sys.exit(0 if (success1 and success2 and success3 and success4) else 1)

@@ -172,6 +172,8 @@ def print_summary():
         "FlashHead model": os.path.isdir("models/SoulX-FlashHead-1_3B"),
         "LivePortrait code": os.path.isdir("LivePortrait"),
         "FlashHead code": os.path.isdir("SoulX-FlashHead") or os.path.isdir("flash_head"),
+        "Real-ESRGAN (4x)": os.path.isfile("models/realesrgan/RealESRGAN_x4plus.pth"),
+        "Real-ESRGAN (2x)": os.path.isfile("models/realesrgan/RealESRGAN_x2plus.pth"),
     }
 
     all_good = True

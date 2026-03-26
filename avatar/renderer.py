@@ -35,6 +35,7 @@ from .audio import AudioFeatureExtractor, PlaceholderAudioExtractor, ChunkAudioA
 from .motion import MotionPredictor
 from .idle import IdleAnimator
 from .smoothing import MotionSmoother, TransitionBlender, AnticipatoryMotion
+from .upscale import FrameUpscaler
 
 logger = logging.getLogger("champ.avatar.renderer")
 
@@ -385,6 +386,9 @@ class ChampAvatarRenderer:
         self._chunk_audio: ChunkAudioAccumulator | None = None
         self._speaking_frame_buffer: deque = deque()  # Buffered frames from chunks
 
+        # Upscaler (optional, all modes)
+        self._upscaler: FrameUpscaler | None = None
+
         # Split pipeline components (SPLIT_PIPELINE mode)
         self._appearance = AppearanceEncoder()
         self._audio_extractor: AudioFeatureExtractor | PlaceholderAudioExtractor | None = None
@@ -444,6 +448,23 @@ class ChampAvatarRenderer:
         else:
             self._audio_extractor = PlaceholderAudioExtractor()
             logger.info("  Pipeline: PLACEHOLDER (procedural animation)")
+
+        # Initialize upscaler if enabled
+        if config.VIDEO_UPSCALE:
+            self._upscaler = FrameUpscaler(scale=config.VIDEO_UPSCALE_FACTOR)
+            upscale_ok = await loop.run_in_executor(
+                self._executor, self._upscaler.load
+            )
+            if upscale_ok:
+                out_w, out_h = self._upscaler.output_size
+                self.width = out_w
+                self.height = out_h
+                logger.info(f"  Upscaler: Real-ESRGAN {config.VIDEO_UPSCALE_FACTOR}x -> {out_w}x{out_h}")
+            else:
+                # Bilinear fallback still works, just update dimensions
+                self.width = config.VIDEO_WIDTH * config.VIDEO_UPSCALE_FACTOR
+                self.height = config.VIDEO_HEIGHT * config.VIDEO_UPSCALE_FACTOR
+                logger.info(f"  Upscaler: Bilinear {config.VIDEO_UPSCALE_FACTOR}x -> {self.width}x{self.height}")
 
         self._running = True
         asyncio.create_task(self._frame_loop())
@@ -684,7 +705,7 @@ class ChampAvatarRenderer:
     # ── Utilities ───────────────────────────────────────────────────────
 
     def _numpy_to_video_frame(self, frame_data: np.ndarray):
-        """Convert numpy RGBA array to LiveKit VideoFrame."""
+        """Convert numpy RGBA array to LiveKit VideoFrame, with optional upscaling."""
         from livekit import rtc
 
         if frame_data.shape[2] == 3:
@@ -693,9 +714,13 @@ class ChampAvatarRenderer:
             )
             frame_data = np.concatenate([frame_data, alpha], axis=2)
 
+        # Upscale if enabled
+        if self._upscaler is not None:
+            frame_data = self._upscaler.upscale(frame_data)
+
         return rtc.VideoFrame(
-            width=self.width,
-            height=self.height,
+            width=frame_data.shape[1],
+            height=frame_data.shape[0],
             type=rtc.VideoBufferType.RGBA,
             data=frame_data.tobytes(),
         )

@@ -8,4 +8,4 @@ COPY litellm_config.yaml /app/config.yaml
 
 EXPOSE 4001
 
-CMD ["--config", "/app/config.yaml", "--port", "4001"]
+CMD ["sh", "-c", "litellm --config /app/config.yaml --port ${PORT:-4001}"]

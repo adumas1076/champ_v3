@@ -51,7 +51,7 @@ def test_pipeline():
     check("MOTION_DIM = 55", config.MOTION_DIM == 55)
     check("NUM_BLENDSHAPES = 52", config.NUM_BLENDSHAPES == 52)
     check("HEAD_POSE_DIM = 3", config.HEAD_POSE_DIM == 3)
-    check("VIDEO_FPS = 30", config.VIDEO_FPS == 30.0)
+    check("VIDEO_FPS = 25 (FlashHead native)", config.VIDEO_FPS == 25.0)
 
     # ── 3. State machine ──
     print("\n[3] State machine...")
@@ -270,6 +270,245 @@ def test_pipeline():
     return failed == 0
 
 
+def test_chunk_pipeline():
+    """Test the FlashHead chunk-based pipeline components (no GPU required)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar — Chunk Pipeline Test (no GPU required)")
+    print("=" * 60)
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. New imports ──
+    print("\n[1] Chunk pipeline imports...")
+    try:
+        from avatar import config
+        from avatar.config import RenderMode
+        from avatar.audio import ChunkAudioAccumulator
+        from avatar.renderer import FlashHeadChunkGenerator, AudioSegmentEnd
+        check("All chunk imports", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. RenderMode enum ──
+    print("\n[2] RenderMode configuration...")
+    check("RenderMode.FLASHHEAD_FULL exists",
+          RenderMode.FLASHHEAD_FULL.value == "flashhead_full")
+    check("RenderMode.SPLIT_PIPELINE exists",
+          RenderMode.SPLIT_PIPELINE.value == "split_pipeline")
+    check("RenderMode.PLACEHOLDER exists",
+          RenderMode.PLACEHOLDER.value == "placeholder")
+    check("RENDER_MODE is a RenderMode",
+          isinstance(config.RENDER_MODE, RenderMode))
+
+    # ── 3. FlashHead config values ──
+    print("\n[3] FlashHead config values...")
+    check("VIDEO_FPS = 25", config.VIDEO_FPS == 25.0)
+    check("FLASHHEAD_CHUNK_FRAMES = 33", config.FLASHHEAD_CHUNK_FRAMES == 33)
+    check("FLASHHEAD_CACHED_AUDIO_DURATION = 8", config.FLASHHEAD_CACHED_AUDIO_DURATION == 8)
+    check("FLASHHEAD_MODEL_TYPE is lite or pro",
+          config.FLASHHEAD_MODEL_TYPE in ("lite", "pro"))
+    check("FLASHHEAD_USABLE_FRAMES = 28", config.FLASHHEAD_USABLE_FRAMES == 28)
+    check("FLASHHEAD_CHUNK_AUDIO_SAMPLES > 0",
+          config.FLASHHEAD_CHUNK_AUDIO_SAMPLES > 0,
+          f"got {config.FLASHHEAD_CHUNK_AUDIO_SAMPLES}")
+    check("FLASHHEAD_CHUNK_DURATION_SEC ~ 1.12",
+          abs(config.FLASHHEAD_CHUNK_DURATION_SEC - 1.12) < 0.1,
+          f"got {config.FLASHHEAD_CHUNK_DURATION_SEC:.3f}")
+
+    # ── 4. ChunkAudioAccumulator ──
+    print("\n[4] ChunkAudioAccumulator...")
+    acc = ChunkAudioAccumulator()
+
+    check("Initial state: no audio", not acc.has_audio)
+    check("Initial state: no chunk ready", not acc.has_chunk_ready())
+    check("Initial state: buffer 0s", acc.buffer_duration_sec == 0.0)
+
+    # Push some audio (simulate 24kHz int16 PCM)
+    # 0.5 seconds at 24kHz = 12000 samples = 24000 bytes
+    fake_audio = np.zeros(12000, dtype=np.int16).tobytes()
+    acc.push_audio(fake_audio)
+
+    check("After push: has audio", acc.has_audio)
+    check("After 0.5s push: buffer > 0", acc.buffer_duration_sec > 0.0)
+    check("After 0.5s push: no chunk yet", not acc.has_chunk_ready())
+
+    # Push enough audio for one full chunk (~1.12s total at 24kHz)
+    # Need ~17920 samples at 16kHz = ~26880 samples at 24kHz = ~53760 bytes
+    big_audio = np.zeros(30000, dtype=np.int16).tobytes()
+    acc.push_audio(big_audio)
+
+    check("After ~1.7s total push: chunk ready", acc.has_chunk_ready())
+
+    # Consume the chunk
+    audio_array = acc.consume_chunk()
+    check("consume_chunk returns float32 array",
+          isinstance(audio_array, np.ndarray) and audio_array.dtype == np.float32)
+    check("consume_chunk returns non-empty", len(audio_array) > 0)
+    check("After consume: no chunk ready", not acc.has_chunk_ready())
+    check("After consume: still has audio", acc.has_audio)
+
+    # Clear
+    acc.clear()
+    check("After clear: no audio", not acc.has_audio)
+    check("After clear: buffer 0s", acc.buffer_duration_sec == 0.0)
+
+    # ── 5. FlashHeadChunkGenerator (init only — no GPU) ──
+    print("\n[5] FlashHeadChunkGenerator structure...")
+    gen = FlashHeadChunkGenerator()
+    check("Generator created", gen is not None)
+    check("Not available before load", not gen.available)
+    gen.reset()
+    check("Reset succeeds without pipeline", True)
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"Chunk Pipeline Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
+def test_training_pipeline():
+    """Test the avatar training / registry components (no GPU required)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar — Training Pipeline Test (no GPU required)")
+    print("=" * 60)
+
+    import tempfile
+    import os
+    import json
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. Training imports ──
+    print("\n[1] Training module imports...")
+    try:
+        from avatar.training import extract_keyframes as ek_module
+        from avatar.training.avatar_registry import AvatarRegistry, AvatarMetadata
+        check("Training imports", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. Keyframe utilities ──
+    print("\n[2] Keyframe extraction utilities...")
+    check("POSE_CLUSTERS defined", len(ek_module.POSE_CLUSTERS) == 9)
+    check("MIN_TOTAL_FRAMES = 8", ek_module.MIN_TOTAL_FRAMES == 8)
+    check("MAX_TOTAL_FRAMES = 20", ek_module.MAX_TOTAL_FRAMES == 20)
+
+    # Test pose assignment
+    cluster = ek_module._assign_cluster(0.0, 0.0)
+    check("Center pose ->front cluster", cluster == "front")
+    cluster = ek_module._assign_cluster(-30.0, 0.0)
+    check("Left pose ->left cluster", cluster == "left")
+    cluster = ek_module._assign_cluster(30.0, 0.0)
+    check("Right pose ->right cluster", cluster == "right")
+
+    # Test head pose estimation
+    yaw, pitch = ek_module._estimate_head_pose_simple([200, 200, 300, 300], 500, 500)
+    check("Center face ->near-zero yaw", abs(yaw) < 10)
+    check("Center face ->near-zero pitch", abs(pitch) < 10)
+
+    yaw, pitch = ek_module._estimate_head_pose_simple([50, 200, 150, 300], 500, 500)
+    check("Left face ->negative yaw", yaw < -5)
+
+    # ── 3. Avatar Registry (in temp dir) ──
+    print("\n[3] Avatar Registry...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        registry = AvatarRegistry(base_dir=tmpdir)
+
+        # Initially empty
+        avatars = registry.list_avatars()
+        check("Registry starts empty", len(avatars) == 0)
+
+        # Create from image
+        # Make a tiny test image
+        test_img_path = os.path.join(tmpdir, "test_face.png")
+        try:
+            from PIL import Image
+            img = Image.new("RGB", (256, 256), color=(128, 128, 128))
+            img.save(test_img_path)
+            has_pil = True
+        except ImportError:
+            has_pil = False
+
+        if has_pil:
+            meta = registry.create_from_image(
+                image_path=test_img_path,
+                avatar_id="test_avatar",
+                name="Test Avatar",
+            )
+            check("Created avatar from image", meta is not None)
+            check("Avatar ID correct", meta.avatar_id == "test_avatar")
+            check("Source type = image", meta.source_type == "image")
+            check("Frame count = 1", meta.frame_count == 1)
+            check("Name correct", meta.name == "Test Avatar")
+
+            # List should have 1 avatar
+            avatars = registry.list_avatars()
+            check("Registry has 1 avatar", len(avatars) == 1)
+
+            # Get avatar
+            loaded = registry.get_avatar("test_avatar")
+            check("Get avatar returns metadata", loaded is not None)
+            check("Loaded ID matches", loaded.avatar_id == "test_avatar")
+
+            # Get reference path
+            ref_path = registry.get_reference_path("test_avatar")
+            check("Reference path exists", os.path.exists(ref_path))
+            check("Reference is a file", os.path.isfile(ref_path))
+
+            # Metadata file exists on disk
+            meta_path = os.path.join(tmpdir, "test_avatar", "metadata.json")
+            check("Metadata JSON saved", os.path.exists(meta_path))
+            with open(meta_path) as f:
+                data = json.load(f)
+            check("Metadata has avatar_id", data["avatar_id"] == "test_avatar")
+
+            # Delete avatar
+            deleted = registry.delete_avatar("test_avatar")
+            check("Delete returns True", deleted)
+            check("Avatar dir removed", not os.path.exists(os.path.join(tmpdir, "test_avatar")))
+            check("Registry empty after delete", len(registry.list_avatars()) == 0)
+
+            # Get nonexistent
+            check("Get nonexistent returns None", registry.get_avatar("nope") is None)
+        else:
+            print("  [SKIP] PIL not available, skipping image registry tests")
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"Training Pipeline Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
 if __name__ == "__main__":
-    success = test_pipeline()
-    sys.exit(0 if success else 1)
+    success1 = test_pipeline()
+    success2 = test_chunk_pipeline()
+    success3 = test_training_pipeline()
+    sys.exit(0 if (success1 and success2 and success3) else 1)

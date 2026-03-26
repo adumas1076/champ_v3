@@ -130,6 +130,9 @@ def check_dependencies():
         "torch": "PyTorch (GPU inference)",
         "torchaudio": "TorchAudio (audio resampling)",
         "transformers": "HuggingFace Transformers (wav2vec2)",
+        "librosa": "Librosa (audio loading — FlashHead)",
+        "imageio": "ImageIO (video frame I/O — FlashHead)",
+        "flash_attn": "FlashAttention 2.8 (FlashHead acceleration)",
     }
     for module, desc in deps.items():
         try:
@@ -137,6 +140,24 @@ def check_dependencies():
             print(f"    [OK] {desc}")
         except ImportError:
             print(f"    [--] {desc} (not installed, optional for placeholder mode)")
+
+
+def check_flashhead_pipeline():
+    """Check FlashHead full pipeline can be imported."""
+    print("\n  [FLASHHEAD PIPELINE]")
+    flashhead_src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SoulX-FlashHead")
+    if os.path.isdir(flashhead_src):
+        print(f"    [OK] FlashHead source: {flashhead_src}")
+        sys.path.insert(0, flashhead_src)
+        try:
+            from flash_head.inference import get_pipeline
+            print("    [OK] flash_head.inference importable")
+        except ImportError as e:
+            print(f"    [--] flash_head.inference import failed: {e}")
+            print("         FlashHead full pipeline unavailable — will use placeholder")
+    else:
+        print(f"    [--] FlashHead source not found at {flashhead_src}")
+        print("         Clone: git clone https://github.com/Soul-AILab/SoulX-FlashHead.git")
 
 
 def print_summary():
@@ -176,6 +197,7 @@ def print_summary():
 if __name__ == "__main__":
     check_gpu()
     check_dependencies()
+    check_flashhead_pipeline()
     clone_repos()
     download_models()
     print_summary()

@@ -4,7 +4,16 @@ All settings in one place. Nothing hardcoded elsewhere.
 """
 
 import os
+from enum import Enum
 from pathlib import Path
+
+
+class RenderMode(Enum):
+    """Which rendering pipeline to use for speaking frames."""
+    FLASHHEAD_FULL = "flashhead_full"    # Full diffusion pipeline (best quality)
+    SPLIT_PIPELINE = "split_pipeline"    # LivePortrait warp + FlashHead MLP (legacy)
+    PLACEHOLDER = "placeholder"          # Procedural pixel effects (no GPU needed)
+
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -12,20 +21,44 @@ CHAMP_ROOT = Path(__file__).parent.parent
 AVATAR_DIR = Path(__file__).parent
 MODELS_DIR = CHAMP_ROOT / "models"
 REFERENCE_IMAGE = CHAMP_ROOT / "frontend" / "public" / "operators" / "champ" / "champ_bio_01.png"
+REFERENCE_VIDEO = os.getenv("CHAMP_AVATAR_REFERENCE_VIDEO", None)  # 2-min video (overrides image)
 
 # Model paths
 LIVEPORTRAIT_DIR = MODELS_DIR / "LivePortrait"
 FLASHHEAD_DIR = MODELS_DIR / "SoulX-FlashHead-1_3B"
 WAV2VEC2_DIR = MODELS_DIR / "wav2vec2-base-960h"
 
+# FlashHead source code (cloned repo for inference imports)
+FLASHHEAD_SRC_DIR = CHAMP_ROOT / "SoulX-FlashHead"
+
+# Avatar storage (multi-reference keyframes from 2-min videos)
+AVATARS_DIR = MODELS_DIR / "avatars"
+
+# ─── Render Mode ─────────────────────────────────────────────────────────────
+
+_render_mode_str = os.getenv("CHAMP_AVATAR_RENDER_MODE", "flashhead_full")
+RENDER_MODE = RenderMode(_render_mode_str) if _render_mode_str in [m.value for m in RenderMode] else RenderMode.PLACEHOLDER
+
 # ─── Video Output ─────────────────────────────────────────────────────────────
 
 VIDEO_WIDTH = 512
 VIDEO_HEIGHT = 512
-VIDEO_FPS = 30.0
-VIDEO_UPSCALE = False          # Set True + install Real-ESRGAN for 1080p output
-VIDEO_UPSCALE_WIDTH = 1280
-VIDEO_UPSCALE_HEIGHT = 720
+VIDEO_FPS = 25.0               # Match FlashHead native FPS (was 30)
+VIDEO_UPSCALE = False          # Set True + install Real-ESRGAN for 4K output
+VIDEO_UPSCALE_FACTOR = 4       # 2x or 4x
+VIDEO_UPSCALE_WIDTH = 2048     # 512 * 4
+VIDEO_UPSCALE_HEIGHT = 2048    # 512 * 4
+
+# ─── FlashHead Full Pipeline ────────────────────────────────────────────────
+
+FLASHHEAD_MODEL_TYPE = os.getenv("CHAMP_FLASHHEAD_MODEL", "lite")  # "lite" or "pro"
+FLASHHEAD_CHUNK_FRAMES = 33             # Total frames per diffusion chunk
+FLASHHEAD_MOTION_FRAMES_LATENT = 2      # Latent frames carried for continuity
+FLASHHEAD_CACHED_AUDIO_DURATION = 8     # Seconds of audio context in sliding deque
+FLASHHEAD_SAMPLE_SHIFT = 5              # Audio window size for context
+FLASHHEAD_COLOR_CORRECTION = 1.0        # Color correction strength (0=off, 1=full)
+FLASHHEAD_USE_FACE_CROP = True          # Auto-detect and crop face from reference
+FLASHHEAD_SEED = 42                     # Reproducibility seed
 
 # ─── Audio Input ──────────────────────────────────────────────────────────────
 
@@ -130,4 +163,19 @@ DTYPE = "float16"  # Use fp16 on GPU for speed
 # ─── Feature Flags ────────────────────────────────────────────────────────────
 
 AVATAR_ENABLED = os.getenv("CHAMP_AVATAR_ENABLED", "false").lower() == "true"
-PLACEHOLDER_MODE = os.getenv("CHAMP_AVATAR_PLACEHOLDER", "true").lower() == "true"
+PLACEHOLDER_MODE = RENDER_MODE == RenderMode.PLACEHOLDER
+
+# ─── Derived Constants ───────────────────────────────────────────────────────
+
+# Usable new frames per FlashHead chunk (total minus continuity overlap)
+# Pro model: motion_frames_num ≈ 5, Lite: ≈ 9 → actual usable varies
+# Conservative estimate based on FlashHead inference code
+FLASHHEAD_USABLE_FRAMES = FLASHHEAD_CHUNK_FRAMES - 5  # ~28 frames
+
+# Audio samples needed per chunk (at 16kHz, 25fps)
+FLASHHEAD_CHUNK_AUDIO_SAMPLES = int(
+    FLASHHEAD_USABLE_FRAMES * AUDIO_MODEL_SAMPLE_RATE / VIDEO_FPS
+)  # ~17920 samples ≈ 1.12 seconds of audio
+
+# Chunk generation cadence in seconds
+FLASHHEAD_CHUNK_DURATION_SEC = FLASHHEAD_USABLE_FRAMES / VIDEO_FPS  # ~1.12s

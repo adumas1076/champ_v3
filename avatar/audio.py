@@ -1,12 +1,25 @@
 """
-CHAMP Avatar — Audio Feature Extraction
-Handles resampling (24kHz→16kHz) and wav2vec2 feature extraction.
-Designed for per-frame streaming — no 2-second buffering needed.
+CHAMP Avatar — Audio Processing
+
+Three modes:
+  1. ChunkAudioAccumulator  — For FlashHead full pipeline (RENDER_MODE=flashhead_full)
+     Accumulates raw 16kHz audio in a sliding deque. Signals when enough audio
+     for one FlashHead chunk (~1.1s) has arrived. FlashHead's own wav2vec2
+     handles feature extraction internally.
+
+  2. AudioFeatureExtractor  — For split pipeline (RENDER_MODE=split_pipeline)
+     Per-frame wav2vec2 feature extraction. Legacy path.
+
+  3. PlaceholderAudioExtractor — For placeholder mode (no GPU)
+     Returns random features for testing.
 """
 
 import collections
+import logging
 import numpy as np
 from . import config
+
+logger = logging.getLogger("champ.avatar.audio")
 
 # Lazy imports for GPU-dependent libs
 _torch = None
@@ -184,3 +197,96 @@ class PlaceholderAudioExtractor:
     @property
     def buffer_duration_sec(self) -> float:
         return self._buffer_len / config.AUDIO_INPUT_SAMPLE_RATE
+
+
+class ChunkAudioAccumulator:
+    """
+    Audio accumulator for FlashHead full pipeline.
+
+    Collects raw audio from TTS (24kHz int16), resamples to 16kHz float32,
+    and stores in a sliding deque matching FlashHead's streaming pattern.
+    Signals when enough audio for one chunk (~1.1s) has accumulated.
+
+    FlashHead's pipeline handles its own wav2vec2 extraction internally —
+    we just feed it raw 16kHz float32 audio arrays.
+
+    Pattern from: SoulX-FlashHead/gradio_app_streaming.py
+    """
+
+    def __init__(self):
+        # Sliding deque of 16kHz float32 samples (8 seconds max context)
+        max_samples = config.FLASHHEAD_CACHED_AUDIO_DURATION * config.AUDIO_MODEL_SAMPLE_RATE
+        self._audio_deque = collections.deque(maxlen=max_samples)
+
+        # Track new samples since last chunk was consumed
+        self._new_samples = 0
+        self._total_samples_pushed = 0
+        self._has_audio = False
+
+    def push_audio(self, raw_bytes: bytes) -> None:
+        """
+        Push raw audio from TTS (24kHz int16 PCM).
+        Resamples to 16kHz float32 and appends to sliding deque.
+        """
+        # Convert bytes → int16 → float32 normalized
+        audio_int16 = np.frombuffer(raw_bytes, dtype=np.int16)
+        audio_f32 = audio_int16.astype(np.float32) / 32768.0
+
+        # Resample 24kHz → 16kHz (simple decimation for speed)
+        # Ratio: 16000/24000 = 2/3 — take every 3rd sample pair
+        # For production quality, use torchaudio sinc resampler
+        try:
+            torch = _ensure_torch()
+            resampler = _ensure_resampler()
+            tensor = torch.from_numpy(audio_f32)
+            resampled = resampler(tensor).numpy()
+        except Exception:
+            # Fallback: linear interpolation resample
+            ratio = config.AUDIO_MODEL_SAMPLE_RATE / config.AUDIO_INPUT_SAMPLE_RATE
+            n_out = int(len(audio_f32) * ratio)
+            indices = np.linspace(0, len(audio_f32) - 1, n_out)
+            resampled = np.interp(indices, np.arange(len(audio_f32)), audio_f32)
+
+        self._audio_deque.extend(resampled.tolist())
+        self._new_samples += len(resampled)
+        self._total_samples_pushed += len(resampled)
+        self._has_audio = True
+
+    def has_chunk_ready(self) -> bool:
+        """True when enough new audio has arrived for one FlashHead chunk."""
+        return self._new_samples >= config.FLASHHEAD_CHUNK_AUDIO_SAMPLES
+
+    def consume_chunk(self) -> np.ndarray:
+        """
+        Return the full audio context as a numpy array for FlashHead.
+        Resets the new-sample counter so has_chunk_ready() goes False
+        until enough new audio arrives for the next chunk.
+
+        Returns:
+            float32 numpy array of the entire deque (up to 8s of audio context).
+            FlashHead's get_audio_embedding() handles windowing internally.
+        """
+        self._new_samples = 0
+        return np.array(list(self._audio_deque), dtype=np.float32)
+
+    def clear(self) -> None:
+        """Clear all audio (on interrupt)."""
+        self._audio_deque.clear()
+        self._new_samples = 0
+        self._total_samples_pushed = 0
+        self._has_audio = False
+        logger.debug("ChunkAudioAccumulator cleared")
+
+    @property
+    def has_audio(self) -> bool:
+        return self._has_audio and len(self._audio_deque) > 0
+
+    @property
+    def buffer_duration_sec(self) -> float:
+        """Current buffer duration in seconds."""
+        return len(self._audio_deque) / config.AUDIO_MODEL_SAMPLE_RATE
+
+    @property
+    def new_audio_duration_sec(self) -> float:
+        """Duration of new (unconsumed) audio in seconds."""
+        return self._new_samples / config.AUDIO_MODEL_SAMPLE_RATE

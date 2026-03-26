@@ -21,4 +21,4 @@ COPY hands/ ./hands/
 
 EXPOSE 8100
 
-CMD ["python", "-m", "uvicorn", "brain.main:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["sh", "-c", "python -m uvicorn brain.main:app --host 0.0.0.0 --port ${PORT:-8100}"]

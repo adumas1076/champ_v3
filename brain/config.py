@@ -13,8 +13,9 @@ class Settings(BaseSettings):
     """Brain layer configuration. Loaded from .env."""
 
     # --- Brain Server ---
+    # Railway sets PORT env var — respect it, fallback to BRAIN_PORT or 8100
     host: str = Field(default="0.0.0.0", alias="BRAIN_HOST")
-    port: int = Field(default=8100, alias="BRAIN_PORT")
+    port: int = Field(default=8100, alias="PORT")
 
     # --- LiteLLM upstream (port 4000) ---
     litellm_base_url: str = Field(

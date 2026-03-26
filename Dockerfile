@@ -17,8 +17,7 @@ COPY brain/ ./brain/
 COPY mind/ ./mind/
 COPY self_mode/ ./self_mode/
 COPY persona/ ./persona/
-COPY hands/__init__.py ./hands/__init__.py
-COPY hands/bridge.py ./hands/bridge.py
+COPY hands/ ./hands/
 
 EXPOSE 8100
 

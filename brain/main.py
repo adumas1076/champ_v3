@@ -18,7 +18,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import requests
 
-from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi import FastAPI, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -798,6 +798,44 @@ async def aioscp_estimate_cost(request: Request):
         "estimated_cost": estimate,
         "count": len(capability_ids),
     }
+
+
+# ---- Remote Hands WebSocket (Local Agent Connection) ----
+
+@app.websocket("/ws/hands")
+async def hands_websocket(ws: WebSocket):
+    """
+    WebSocket endpoint for the Local Hands Agent.
+    The local agent connects here and receives desktop/browser commands
+    from the cloud Brain, executes them locally, and sends results back.
+    """
+    from hands.remote import set_agent_connection, clear_agent_connection, handle_agent_response
+
+    await ws.accept()
+    set_agent_connection(ws)
+    logger.info("[HANDS WS] Local agent connected")
+
+    try:
+        while True:
+            data = await ws.receive_text()
+            try:
+                parsed = json.loads(data)
+                handle_agent_response(parsed)
+            except json.JSONDecodeError:
+                logger.error(f"[HANDS WS] Invalid JSON from agent: {data[:100]}")
+    except WebSocketDisconnect:
+        logger.info("[HANDS WS] Local agent disconnected")
+    except Exception as e:
+        logger.error(f"[HANDS WS] Error: {e}")
+    finally:
+        clear_agent_connection()
+
+
+@app.get("/v1/hands/status")
+async def hands_status():
+    """Check if a local hands agent is connected."""
+    from hands.router import get_hands_status
+    return get_hands_status()
 
 
 if __name__ == "__main__":

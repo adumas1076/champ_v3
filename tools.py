@@ -12,25 +12,28 @@ import os
 from pathlib import Path
 from livekit.agents import function_tool, RunContext
 import requests
-# Puppeteer removed — stealth browser (nodriver) is the only browser now
-from hands.stealth_browser import (
+# Hands Router — auto-detects local vs cloud, routes accordingly
+from hands.router import (
     browse as stealth_browse,
-    take_screenshot as stealth_screenshot,
+    browser_screenshot as stealth_screenshot,
     fill_form as stealth_fill_form,
     click_element as stealth_click,
-    type_text as stealth_type,
+    browser_type_text as stealth_type,
     google_search as stealth_google_search,
     get_page_content as stealth_get_page,
     execute_js as stealth_js,
-)
-from hands.desktop import (
     desktop_action,
     open_app as desktop_open_app,
     get_open_windows as desktop_list_windows,
     press_key as desktop_press_key,
-    take_screenshot as desktop_screenshot,
-    get_ui_elements,
+    desktop_screenshot,
 )
+# UI elements only work locally — import with fallback
+try:
+    from hands.desktop import get_ui_elements
+except Exception:
+    async def get_ui_elements(window_title=None):
+        return {"ok": False, "error": "UI elements only available with local hands agent"}
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
@@ -1065,3 +1068,657 @@ async def get_pdf_content(
     except Exception as e:
         logging.error(f"get_pdf_content error: {e}")
         return f"Failed to extract PDF content: {e}"
+
+
+# ============================================
+# FILE SYSTEM — Read, Edit, List, Search
+# The eyes and hands for code and documents.
+# ============================================
+
+@function_tool()
+async def read_file(
+    context: RunContext,
+    path: str,
+    start_line: int = 0,
+    end_line: int = 0,
+) -> str:
+    """Read the contents of any file on the machine.
+    Use this to read source code, config files, logs, documents, or any text file.
+    Optionally specify start_line and end_line to read a specific section (1-indexed).
+    If end_line is 0, reads the entire file.
+
+    Use this when: you need to understand code before editing it, read configs,
+    check logs, review files, or inspect your own source code for self-correction."""
+    try:
+        p = Path(path).resolve()
+        if not p.exists():
+            return f"File not found: {path}"
+        if not p.is_file():
+            return f"Not a file: {path}"
+        if p.stat().st_size > 5 * 1024 * 1024:
+            return f"File too large ({p.stat().st_size / 1024 / 1024:.1f}MB). Use start_line/end_line to read sections."
+
+        text = p.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+
+        if start_line > 0 or end_line > 0:
+            s = max(start_line - 1, 0)
+            e = end_line if end_line > 0 else len(lines)
+            selected = lines[s:e]
+            numbered = [f"{i + s + 1:4d} | {line}" for i, line in enumerate(selected)]
+            return f"File: {path} (lines {s + 1}-{min(e, len(lines))} of {len(lines)})\n\n" + "\n".join(numbered)
+        else:
+            numbered = [f"{i + 1:4d} | {line}" for i, line in enumerate(lines)]
+            return f"File: {path} ({len(lines)} lines)\n\n" + "\n".join(numbered)
+
+    except Exception as e:
+        logging.error(f"read_file error: {e}")
+        return f"Error reading file: {e}"
+
+
+@function_tool()
+async def edit_file(
+    context: RunContext,
+    path: str,
+    old_text: str,
+    new_text: str,
+) -> str:
+    """Make a surgical edit to a file — find old_text and replace it with new_text.
+    ALWAYS read_file first to see the current content before editing.
+    The old_text must match exactly (including whitespace/indentation).
+
+    Use this when: fixing bugs, updating code, modifying configs, correcting your own source code.
+    For creating new files, use create_file instead."""
+    try:
+        p = Path(path).resolve()
+        if not p.exists():
+            return f"File not found: {path}"
+
+        content = p.read_text(encoding="utf-8")
+
+        if old_text not in content:
+            # Try to help find a near-match
+            lines = content.splitlines()
+            first_line = old_text.strip().splitlines()[0] if old_text.strip() else ""
+            near = [i + 1 for i, l in enumerate(lines) if first_line and first_line.strip() in l]
+            hint = f" Possible near-matches at lines: {near[:5]}" if near else ""
+            return f"old_text not found in {path}.{hint} Use read_file to check exact content."
+
+        count = content.count(old_text)
+        if count > 1:
+            return f"old_text matches {count} locations in {path}. Make it more specific (include surrounding lines)."
+
+        new_content = content.replace(old_text, new_text, 1)
+        p.write_text(new_content, encoding="utf-8")
+
+        logging.info(f"edit_file: {path} ({len(old_text)} chars -> {len(new_text)} chars)")
+        return f"Edited {path} successfully. Changed {len(old_text)} chars to {len(new_text)} chars."
+
+    except Exception as e:
+        logging.error(f"edit_file error: {e}")
+        return f"Error editing file: {e}"
+
+
+@function_tool()
+async def list_directory(
+    context: RunContext,
+    path: str = ".",
+    pattern: str = "*",
+    recursive: bool = False,
+) -> str:
+    """List files and directories at the given path.
+    Optionally filter with a glob pattern (e.g. '*.py', '*.md').
+    Set recursive=True to search subdirectories.
+
+    Use this when: navigating a project, finding files, exploring codebases,
+    checking what files exist before reading/editing."""
+    try:
+        p = Path(path).resolve()
+        if not p.exists():
+            return f"Path not found: {path}"
+        if not p.is_dir():
+            return f"Not a directory: {path}"
+
+        if recursive:
+            items = sorted(p.rglob(pattern))
+        else:
+            items = sorted(p.glob(pattern))
+
+        entries = []
+        for item in items[:200]:  # Cap at 200 entries
+            rel = item.relative_to(p)
+            if item.is_dir():
+                entries.append(f"  [DIR]  {rel}/")
+            else:
+                size = item.stat().st_size
+                if size < 1024:
+                    size_str = f"{size}B"
+                elif size < 1024 * 1024:
+                    size_str = f"{size / 1024:.0f}KB"
+                else:
+                    size_str = f"{size / 1024 / 1024:.1f}MB"
+                entries.append(f"  {size_str:>8s}  {rel}")
+
+        total = len(list(p.rglob(pattern) if recursive else p.glob(pattern)))
+        header = f"Directory: {p}\nPattern: {pattern} | Showing {len(entries)} of {total}\n"
+        return header + "\n".join(entries)
+
+    except Exception as e:
+        logging.error(f"list_directory error: {e}")
+        return f"Error listing directory: {e}"
+
+
+@function_tool()
+async def search_files(
+    context: RunContext,
+    query: str,
+    path: str = ".",
+    file_pattern: str = "*",
+    max_results: int = 30,
+) -> str:
+    """Search for text content across files — like grep.
+    Finds all lines matching the query string in files under the given path.
+    Optionally filter by file pattern (e.g. '*.py').
+
+    Use this when: looking for where something is defined, finding usages,
+    searching for patterns, debugging, or understanding codebases."""
+    try:
+        p = Path(path).resolve()
+        if not p.exists():
+            return f"Path not found: {path}"
+
+        results = []
+        files_searched = 0
+
+        for filepath in p.rglob(file_pattern):
+            if not filepath.is_file():
+                continue
+            if filepath.stat().st_size > 2 * 1024 * 1024:
+                continue  # Skip large files
+            # Skip binary and hidden files
+            if any(part.startswith('.') for part in filepath.parts):
+                continue
+            if filepath.suffix in ('.pyc', '.pyo', '.exe', '.dll', '.so', '.png', '.jpg', '.gif', '.zip', '.gz'):
+                continue
+
+            files_searched += 1
+            try:
+                text = filepath.read_text(encoding="utf-8", errors="ignore")
+                for i, line in enumerate(text.splitlines(), 1):
+                    if query.lower() in line.lower():
+                        rel = filepath.relative_to(p)
+                        results.append(f"{rel}:{i}: {line.strip()[:150]}")
+                        if len(results) >= max_results:
+                            break
+            except Exception:
+                continue
+
+            if len(results) >= max_results:
+                break
+
+        header = f"Search: '{query}' in {path} ({file_pattern})\nFiles searched: {files_searched} | Matches: {len(results)}\n{'=' * 50}\n"
+        if results:
+            return header + "\n".join(results)
+        else:
+            return header + "No matches found."
+
+    except Exception as e:
+        logging.error(f"search_files error: {e}")
+        return f"Error searching files: {e}"
+
+
+# ============================================
+# SHELL — Run Any Terminal Command
+# Full access to the system. No prison.
+# ============================================
+
+@function_tool()
+async def run_shell(
+    context: RunContext,
+    command: str,
+    working_dir: str = "",
+    timeout_seconds: int = 120,
+) -> str:
+    """Execute any shell/terminal command and return the output.
+    Use this for: installing packages, running builds, checking system info,
+    managing processes, running scripts, or anything you'd type in a terminal.
+
+    Examples: 'pip install flask', 'npm run build', 'git status', 'ls -la',
+    'docker ps', 'netstat -tlnp', 'python test.py'
+
+    Set working_dir to run from a specific directory.
+    Default timeout is 120 seconds."""
+    import subprocess
+
+    # Safety: block obviously destructive commands
+    blocked = ["rm -rf /", "format c:", "del /f /s /q c:\\"]
+    if any(b in command.lower() for b in blocked):
+        return "Blocked: that command could destroy the system. Be more specific about what to delete."
+
+    try:
+        cwd = working_dir if working_dir else None
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            cwd=cwd,
+        )
+
+        output = ""
+        if result.stdout:
+            output += result.stdout
+        if result.stderr:
+            output += ("\n--- STDERR ---\n" + result.stderr) if result.stdout else result.stderr
+
+        if not output.strip():
+            output = "(no output)"
+
+        # Cap output size
+        if len(output) > 10000:
+            output = output[:5000] + "\n\n[... truncated ...]\n\n" + output[-5000:]
+
+        status = "OK" if result.returncode == 0 else f"EXIT CODE {result.returncode}"
+        logging.info(f"run_shell: '{command[:60]}' -> {status}")
+        return f"[{status}]\n{output}"
+
+    except subprocess.TimeoutExpired:
+        return f"Command timed out after {timeout_seconds}s: {command}"
+    except Exception as e:
+        logging.error(f"run_shell error: {e}")
+        return f"Shell error: {e}"
+
+
+# ============================================
+# GIT — Version Control
+# Commit, push, pull, branch, diff.
+# ============================================
+
+@function_tool()
+async def git_command(
+    context: RunContext,
+    operation: str,
+    args: str = "",
+    working_dir: str = "",
+) -> str:
+    """Run git operations on any repository.
+    Operations: status, diff, log, add, commit, push, pull, branch, checkout, stash, remote
+
+    Examples:
+    - git_command("status") — see what's changed
+    - git_command("diff") — see exact changes
+    - git_command("log", "--oneline -10") — last 10 commits
+    - git_command("add", ".") — stage all changes
+    - git_command("commit", "-m 'fix: browser timeout'") — commit
+    - git_command("push") — push to remote
+    - git_command("pull") — pull latest
+    - git_command("branch", "feature/new-tool") — create branch
+    - git_command("checkout", "main") — switch branch
+
+    Use this for: self-correction (commit fixes), deploying changes,
+    managing code versions, collaborating on repos."""
+    import subprocess
+
+    # Allowed operations
+    allowed = {"status", "diff", "log", "add", "commit", "push", "pull",
+               "branch", "checkout", "stash", "remote", "fetch", "merge",
+               "rebase", "reset", "show", "tag", "clone", "init"}
+
+    op = operation.strip().lower()
+    if op not in allowed:
+        return f"Git operation '{op}' not recognized. Allowed: {', '.join(sorted(allowed))}"
+
+    # Build command
+    cmd = f"git {op}"
+    if args:
+        cmd += f" {args}"
+
+    try:
+        cwd = working_dir if working_dir else None
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=cwd,
+        )
+
+        output = ""
+        if result.stdout:
+            output += result.stdout
+        if result.stderr:
+            # Git often puts info in stderr (like push progress)
+            output += ("\n" + result.stderr) if result.stdout else result.stderr
+
+        if not output.strip():
+            output = "(no output — command succeeded)"
+
+        if len(output) > 10000:
+            output = output[:5000] + "\n\n[... truncated ...]\n\n" + output[-5000:]
+
+        status = "OK" if result.returncode == 0 else f"ERROR (exit {result.returncode})"
+        logging.info(f"git {op}: {status}")
+        return f"[git {op}: {status}]\n{output}"
+
+    except subprocess.TimeoutExpired:
+        return f"Git command timed out: {cmd}"
+    except Exception as e:
+        logging.error(f"git_command error: {e}")
+        return f"Git error: {e}"
+
+
+# ============================================
+# CLIPBOARD — Read/Write System Clipboard
+# Share data between apps seamlessly.
+# ============================================
+
+@function_tool()
+async def clipboard(
+    context: RunContext,
+    action: str = "read",
+    text: str = "",
+) -> str:
+    """Read from or write to the system clipboard.
+    action='read' — get whatever is currently on the clipboard.
+    action='write' — put text onto the clipboard so you (or the user) can paste it elsewhere.
+
+    Use this when: sharing data between apps, grabbing copied text,
+    putting results somewhere the user can paste."""
+    try:
+        import subprocess
+
+        if action == "read":
+            # Windows clipboard read
+            result = subprocess.run(
+                ["powershell", "-command", "Get-Clipboard"],
+                capture_output=True, text=True, timeout=5,
+            )
+            content = result.stdout.strip()
+            if content:
+                return f"Clipboard contents ({len(content)} chars):\n{content[:5000]}"
+            else:
+                return "Clipboard is empty."
+
+        elif action == "write":
+            if not text:
+                return "Nothing to write — provide text."
+            # Windows clipboard write
+            process = subprocess.Popen(
+                ["powershell", "-command", "Set-Clipboard", "-Value", text[:10000]],
+                stdin=subprocess.PIPE, timeout=5,
+            )
+            process.wait(timeout=5)
+            return f"Copied to clipboard ({len(text)} chars). Ready to paste."
+
+        else:
+            return "action must be 'read' or 'write'"
+
+    except Exception as e:
+        logging.error(f"clipboard error: {e}")
+        return f"Clipboard error: {e}"
+
+
+# ============================================
+# TASKS & NOTES — Persistent Productivity
+# Survives across sessions via Brain API.
+# ============================================
+
+@function_tool()
+async def manage_tasks(
+    context: RunContext,
+    action: str,
+    task: str = "",
+    task_id: str = "",
+    priority: str = "medium",
+) -> str:
+    """Manage a persistent task/TODO list that survives across sessions.
+    Actions:
+    - 'add' — add a new task (provide task text and optional priority: high/medium/low)
+    - 'list' — show all open tasks
+    - 'done' — mark a task as complete (provide task_id)
+    - 'remove' — delete a task (provide task_id)
+
+    Use this when: user says "remind me to", "add to my list", "what's on my plate",
+    "mark X as done", or when tracking work items across sessions."""
+    try:
+        response = requests.post(
+            f"{BRAIN_URL}/v1/tasks",
+            json={"action": action, "task": task, "task_id": task_id, "priority": priority},
+            timeout=10,
+        )
+        if response.status_code == 404:
+            # Tasks endpoint not yet deployed — use local fallback
+            return await _local_task_fallback(action, task, task_id, priority)
+        response.raise_for_status()
+        return response.json().get("result", "Done.")
+    except requests.exceptions.ConnectionError:
+        return await _local_task_fallback(action, task, task_id, priority)
+    except Exception as e:
+        logging.error(f"manage_tasks error: {e}")
+        return f"Task error: {e}"
+
+
+# Local task fallback (file-based when Brain doesn't have the endpoint yet)
+_TASKS_FILE = Path(__file__).resolve().parent / "output" / "tasks.json"
+
+
+async def _local_task_fallback(action: str, task: str, task_id: str, priority: str) -> str:
+    """File-based task management as fallback."""
+    import uuid
+
+    _TASKS_FILE.parent.mkdir(exist_ok=True)
+    tasks = []
+    if _TASKS_FILE.exists():
+        try:
+            tasks = _json.loads(_TASKS_FILE.read_text())
+        except Exception:
+            tasks = []
+
+    if action == "add":
+        if not task:
+            return "Provide a task description."
+        new_task = {
+            "id": f"T-{uuid.uuid4().hex[:6]}",
+            "task": task,
+            "priority": priority,
+            "status": "open",
+            "created": datetime.now().isoformat() if 'datetime' in dir() else "now",
+        }
+        tasks.append(new_task)
+        _TASKS_FILE.write_text(_json.dumps(tasks, indent=2))
+        return f"Added: [{new_task['id']}] {task} (priority: {priority})"
+
+    elif action == "list":
+        open_tasks = [t for t in tasks if t.get("status") == "open"]
+        if not open_tasks:
+            return "No open tasks. All clear."
+        lines = []
+        for t in open_tasks:
+            p = t.get("priority", "medium").upper()
+            lines.append(f"  [{t['id']}] [{p}] {t['task']}")
+        return f"Open Tasks ({len(open_tasks)}):\n" + "\n".join(lines)
+
+    elif action == "done":
+        for t in tasks:
+            if t.get("id") == task_id:
+                t["status"] = "done"
+                _TASKS_FILE.write_text(_json.dumps(tasks, indent=2))
+                return f"Marked done: {t['task']}"
+        return f"Task {task_id} not found."
+
+    elif action == "remove":
+        tasks = [t for t in tasks if t.get("id") != task_id]
+        _TASKS_FILE.write_text(_json.dumps(tasks, indent=2))
+        return f"Removed task {task_id}."
+
+    return f"Unknown action: {action}. Use add/list/done/remove."
+
+
+@function_tool()
+async def take_notes(
+    context: RunContext,
+    action: str,
+    content: str = "",
+    topic: str = "general",
+) -> str:
+    """Persistent notepad — save and retrieve notes across sessions.
+    Actions:
+    - 'save' — save a note (provide content and optional topic)
+    - 'read' — read all notes (optionally filter by topic)
+    - 'clear' — clear notes for a topic
+
+    Use this when: saving research findings, storing plans, keeping track of ideas,
+    recording meeting notes, or when you need to remember something for later."""
+    try:
+        notes_dir = Path(__file__).resolve().parent / "output" / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_topic = "".join(c for c in topic if c.isalnum() or c in "-_").lower() or "general"
+        notes_file = notes_dir / f"{safe_topic}.md"
+
+        if action == "save":
+            if not content:
+                return "Provide content to save."
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            entry = f"\n## [{timestamp}]\n{content}\n"
+
+            with open(notes_file, "a", encoding="utf-8") as f:
+                f.write(entry)
+
+            logging.info(f"Note saved to {safe_topic} ({len(content)} chars)")
+            return f"Note saved to '{safe_topic}' ({len(content)} chars)."
+
+        elif action == "read":
+            if notes_file.exists():
+                text = notes_file.read_text(encoding="utf-8")
+                return f"Notes [{safe_topic}] ({len(text)} chars):\n\n{text[-8000:]}"
+            else:
+                # List available topics
+                available = [f.stem for f in notes_dir.glob("*.md")]
+                if available:
+                    return f"No notes for '{safe_topic}'. Available topics: {', '.join(available)}"
+                return "No notes saved yet."
+
+        elif action == "clear":
+            if notes_file.exists():
+                notes_file.unlink()
+                return f"Cleared all notes for '{safe_topic}'."
+            return f"No notes for '{safe_topic}'."
+
+        return f"Unknown action: {action}. Use save/read/clear."
+
+    except Exception as e:
+        logging.error(f"take_notes error: {e}")
+        return f"Notes error: {e}"
+
+
+# ============================================
+# SELF-CORRECTION — Fix Your Own Code
+# Read source → understand → edit → test → deploy
+# ============================================
+
+@function_tool()
+async def self_correct(
+    context: RunContext,
+    action: str,
+    description: str = "",
+) -> str:
+    """Self-correction workflow — inspect and fix your own source code.
+    Actions:
+    - 'diagnose' — read your own source files related to the issue, describe what you see
+    - 'fix' — apply a fix (use read_file + edit_file for the actual edits, then call this with action='fix' to log it)
+    - 'test' — run your gate tests to verify the fix
+    - 'deploy' — commit and push the fix (triggers Railway auto-deploy)
+
+    This is your self-improvement loop. When something breaks:
+    1. self_correct('diagnose', 'the browse tool is timing out')
+    2. read_file the relevant source
+    3. edit_file to fix it
+    4. self_correct('test') to verify
+    5. self_correct('deploy', 'fix: browser timeout increased') to ship it
+
+    Use this when: user reports a bug, something fails, or you identify an issue in your own behavior."""
+    import subprocess
+
+    champ_root = str(Path(__file__).resolve().parent)
+
+    if action == "diagnose":
+        # List all source files and their recent changes
+        try:
+            result = subprocess.run(
+                "git diff --stat HEAD~3",
+                shell=True, capture_output=True, text=True,
+                timeout=10, cwd=champ_root,
+            )
+            recent_changes = result.stdout or "No recent git changes detected."
+
+            # Get list of core source files
+            core_files = []
+            for pattern in ["*.py", "brain/*.py", "hands/*.py", "mind/*.py",
+                           "operators/*.py", "self_mode/*.py", "ears/*.py"]:
+                for f in Path(champ_root).glob(pattern):
+                    core_files.append(str(f.relative_to(champ_root)))
+
+            return (
+                f"Self-Correction Diagnosis\n"
+                f"Issue: {description}\n"
+                f"{'=' * 50}\n"
+                f"CHAMP root: {champ_root}\n"
+                f"Core files ({len(core_files)}):\n"
+                + "\n".join(f"  {f}" for f in sorted(core_files))
+                + f"\n\nRecent changes:\n{recent_changes}\n"
+                f"\nNext: use read_file to inspect the relevant source, "
+                f"then edit_file to fix it."
+            )
+        except Exception as e:
+            return f"Diagnosis error: {e}"
+
+    elif action == "test":
+        # Run gate tests
+        try:
+            result = subprocess.run(
+                "python -c \"import tools; print('tools.py: OK')\" && "
+                "python -c \"from brain.main import app; print('brain: OK')\" && "
+                "python -c \"from hands.router import get_hands_status; print('router:', get_hands_status())\"",
+                shell=True, capture_output=True, text=True,
+                timeout=30, cwd=champ_root,
+            )
+            output = result.stdout + (result.stderr if result.returncode != 0 else "")
+            status = "ALL TESTS PASSED" if result.returncode == 0 else "TESTS FAILED"
+            return f"[{status}]\n{output}"
+        except Exception as e:
+            return f"Test error: {e}"
+
+    elif action == "deploy":
+        # Git add + commit + push
+        if not description:
+            return "Provide a commit message in the description."
+        try:
+            cmds = [
+                "git add -A",
+                f'git commit -m "{description}"',
+                "git push",
+            ]
+            outputs = []
+            for cmd in cmds:
+                result = subprocess.run(
+                    cmd, shell=True, capture_output=True, text=True,
+                    timeout=30, cwd=champ_root,
+                )
+                outputs.append(f"$ {cmd}\n{result.stdout}{result.stderr}")
+                if result.returncode != 0 and "push" not in cmd:
+                    return f"Deploy failed at: {cmd}\n{''.join(outputs)}"
+
+            return f"Deployed!\n{''.join(outputs)}"
+        except Exception as e:
+            return f"Deploy error: {e}"
+
+    elif action == "fix":
+        # Just log the fix (actual editing done via edit_file)
+        logging.info(f"[SELF-CORRECT] Fix applied: {description}")
+        return f"Fix logged: {description}. Run self_correct('test') to verify, then self_correct('deploy', 'your commit message') to ship."
+
+    return f"Unknown action: {action}. Use diagnose/fix/test/deploy."

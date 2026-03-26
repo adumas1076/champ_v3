@@ -18,9 +18,9 @@ from uuid import uuid4
 import requests
 
 from brain.config import Settings
-from hands.bridge import (
+from hands.router import (
     browse as hands_browse,
-    take_screenshot as hands_screenshot,
+    browser_screenshot as hands_screenshot,
     fill_form as hands_fill_form,
 )
 from self_mode.models import (

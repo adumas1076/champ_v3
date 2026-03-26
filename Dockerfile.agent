@@ -15,5 +15,7 @@ RUN pip install --no-cache-dir -r requirements-agent.txt
 
 COPY agent.py tools.py ./
 COPY hands/ ./hands/
+COPY operators/ ./operators/
+COPY persona/ ./persona/
 
 CMD ["python", "agent.py", "start"]

@@ -34,6 +34,10 @@ from tools import (
     google_search, control_desktop, read_screen,
     get_youtube_transcript, get_podcast_transcript,
     get_web_content, get_pdf_content,
+    # Jailbreak tools — full autonomy
+    read_file, edit_file, list_directory, search_files,
+    run_shell, git_command, clipboard,
+    manage_tasks, take_notes, self_correct,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +59,9 @@ THINK_TOOLS = [
     get_podcast_transcript,  # Research — podcast episode info from RSS feeds
     get_web_content,         # Research — extract text from any web page/blog/article
     get_pdf_content,         # Research — extract text from PDF documents/books
+    read_file,          # Eyes — read any file on the machine
+    search_files,       # Eyes — grep through codebases
+    list_directory,     # Eyes — browse filesystem
 ]
 
 # ACT tools (Hands)
@@ -66,10 +73,15 @@ ACT_TOOLS = [
     control_desktop,    # Hands — control any desktop app
     run_code,           # Hands — execute code
     create_file,        # Hands — create files
+    edit_file,          # Hands — surgical edits to any file
+    run_shell,          # Hands — execute any terminal command
+    git_command,        # Hands — full git version control
+    clipboard,          # Hands — read/write system clipboard
     go_do,              # Hands — hand off to Self Mode (autonomous)
     check_task,         # Hands — check Self Mode task status
     approve_task,       # Hands — approve blocked Self Mode task
     resume_task,        # Hands — resume failed Self Mode task
+    self_correct,       # Hands — fix own source code + deploy
 ]
 
 # RESPOND tools (Voice + Avatar)
@@ -79,6 +91,8 @@ ACT_TOOLS = [
 # Utility tools
 UTILITY_TOOLS = [
     get_weather,        # Quick utility
+    manage_tasks,       # Productivity — persistent task list
+    take_notes,         # Productivity — persistent notepad
 ]
 
 # All OS tools combined
@@ -133,6 +147,38 @@ BRAIN (THINK):
   Pass any URL. Returns clean text content.
 - get_pdf_content: Extract text from PDF documents. Use for reading books, SOPs,
   contracts, reports, or any PDF. Pass file path + optional page range.
+
+FILE SYSTEM (THINK + ACT):
+- read_file: Read any file on the machine. ALWAYS read before editing. Use for code review,
+  checking configs, reading logs, inspecting your own source code.
+- edit_file: Surgical find-and-replace edits. ALWAYS read_file first. Use for fixing bugs,
+  updating code, modifying configs. old_text must match exactly.
+- list_directory: Browse the filesystem. Use to find files, explore projects, check what exists.
+- search_files: Grep through files. Use to find where things are defined, search for patterns,
+  understand codebases. Like having grep built into your brain.
+- create_file: Create new files (already existed).
+
+SHELL + GIT (ACT):
+- run_shell: Execute ANY terminal command. Install packages, run builds, manage processes,
+  check system info. You are not sandboxed — use responsibly.
+- git_command: Full git operations — status, diff, commit, push, pull, branch, checkout.
+  Use for version control, deploying fixes, managing code. Essential for self-correction.
+- clipboard: Read/write the system clipboard. Share data between apps.
+
+PRODUCTIVITY (UTILITY):
+- manage_tasks: Persistent task list that survives across sessions. Add, list, complete, remove tasks.
+  Use when: "remind me to", "add to my list", "what's on my plate".
+- take_notes: Persistent notepad organized by topic. Save research, plans, findings.
+  Use when: saving information for later, organizing research, tracking ideas.
+
+SELF-CORRECTION (ACT):
+- self_correct: Your self-improvement loop. When something in your code breaks:
+  1. self_correct('diagnose', 'description of issue') — see your source files + recent changes
+  2. read_file to inspect the broken code
+  3. edit_file to fix it
+  4. self_correct('test') — verify the fix
+  5. self_correct('deploy', 'commit message') — commit, push, Railway auto-deploys
+  You can fix yourself. Use this power wisely.
 """
 
 

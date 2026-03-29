@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const NANGO_SERVER_URL =
   import.meta.env.VITE_NANGO_SERVER_URL ||
@@ -8,10 +8,10 @@ const NANGO_SECRET_KEY = import.meta.env.VITE_NANGO_SECRET_KEY || "";
 
 interface Integration {
   id: string;
+  nangoKey: string;
   name: string;
   icon: string;
   description: string;
-  authType: "API_KEY" | "OAUTH2";
   connected: boolean;
   loading: boolean;
 }
@@ -19,37 +19,37 @@ interface Integration {
 const INTEGRATIONS: Integration[] = [
   {
     id: "supabase",
+    nangoKey: "supabase-oauth",
     name: "Supabase",
     icon: "https://cdn.worldvectorlogo.com/logos/supabase-icon.svg",
     description: "Database, Auth & Storage",
-    authType: "API_KEY",
     connected: false,
     loading: false,
   },
   {
     id: "google",
+    nangoKey: "google",
     name: "Gmail",
     icon: "https://cdn.worldvectorlogo.com/logos/gmail-icon-1.svg",
     description: "Email & Calendar",
-    authType: "OAUTH2",
     connected: false,
     loading: false,
   },
   {
     id: "stripe",
+    nangoKey: "stripe",
     name: "Stripe",
     icon: "https://cdn.worldvectorlogo.com/logos/stripe-4.svg",
     description: "Payments & Billing",
-    authType: "API_KEY",
     connected: false,
     loading: false,
   },
   {
     id: "github",
+    nangoKey: "github-oauth",
     name: "GitHub",
     icon: "https://cdn.worldvectorlogo.com/logos/github-icon-1.svg",
     description: "Code & Repositories",
-    authType: "OAUTH2",
     connected: false,
     loading: false,
   },
@@ -57,63 +57,67 @@ const INTEGRATIONS: Integration[] = [
 
 export default function ConnectStack() {
   const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS);
-  const [apiKeyModal, setApiKeyModal] = useState<string | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState("");
   const [userId] = useState("anthony"); // will come from auth later
 
-  const handleConnect = async (integrationId: string) => {
-    const integration = integrations.find((i) => i.id === integrationId);
-    if (!integration) return;
-
-    if (integration.authType === "API_KEY") {
-      setApiKeyModal(integrationId);
-      return;
+  // Check URL params for OAuth callback result
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("success") === "true") {
+      const provider = params.get("provider");
+      if (provider) {
+        setIntegrations((prev) =>
+          prev.map((i) =>
+            i.nangoKey === provider ? { ...i, connected: true } : i
+          )
+        );
+      }
+      window.history.replaceState({}, "", "/connect");
     }
+  }, []);
 
-    // OAuth flow — future
-    alert("OAuth integrations coming soon. API Key integrations work now.");
-  };
-
-  const submitApiKey = async () => {
-    if (!apiKeyModal || !apiKeyInput.trim()) return;
-
+  const handleConnect = async (integration: Integration) => {
     setIntegrations((prev) =>
       prev.map((i) =>
-        i.id === apiKeyModal ? { ...i, loading: true } : i
+        i.id === integration.id ? { ...i, loading: true } : i
       )
     );
 
     try {
-      const res = await fetch(`${NANGO_SERVER_URL}/connection`, {
+      // Step 1: Create a connect session token from our backend
+      const sessionRes = await fetch(`${NANGO_SERVER_URL}/connect/sessions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${NANGO_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          connection_id: `${userId}-${apiKeyModal}`,
-          provider_config_key: apiKeyModal,
-          api_key: apiKeyInput.trim(),
+          end_user: {
+            id: userId,
+            email: "adumas1076@gmail.com",
+            display_name: "Anthony",
+          },
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || "Connection failed");
+      if (!sessionRes.ok) {
+        const err = await sessionRes.json();
+        throw new Error(err.error?.message || "Failed to create session");
       }
 
-      setIntegrations((prev) =>
-        prev.map((i) =>
-          i.id === apiKeyModal ? { ...i, connected: true, loading: false } : i
-        )
-      );
-      setApiKeyModal(null);
-      setApiKeyInput("");
+      const session = await sessionRes.json();
+      const token = session.data.token;
+
+      // Step 2: Redirect to Nango's OAuth flow with the session token
+      const authUrl =
+        `${NANGO_SERVER_URL}/oauth/connect/${integration.nangoKey}` +
+        `?connect_session_token=${encodeURIComponent(token)}`;
+
+      window.location.href = authUrl;
     } catch (err: any) {
       alert(`Error: ${err.message}`);
       setIntegrations((prev) =>
         prev.map((i) =>
-          i.id === apiKeyModal ? { ...i, loading: false } : i
+          i.id === integration.id ? { ...i, loading: false } : i
         )
       );
     }
@@ -171,7 +175,7 @@ export default function ConnectStack() {
               </div>
             ) : (
               <button
-                onClick={() => handleConnect(integration.id)}
+                onClick={() => handleConnect(integration)}
                 disabled={integration.loading}
                 className="px-6 py-2.5 bg-black text-white rounded-full font-medium text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -203,47 +207,6 @@ export default function ConnectStack() {
           </div>
         ))}
       </div>
-
-      {/* API Key Modal */}
-      {apiKeyModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Enter API Key
-            </h2>
-            <p className="text-gray-500 text-sm mb-6">
-              Your key is encrypted and stored securely. Only your operators can
-              access it.
-            </p>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="Paste your API key here..."
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent mb-6"
-              autoFocus
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setApiKeyModal(null);
-                  setApiKeyInput("");
-                }}
-                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-full font-medium text-sm hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={submitApiKey}
-                disabled={!apiKeyInput.trim()}
-                className="flex-1 px-4 py-2.5 bg-black text-white rounded-full font-medium text-sm hover:bg-gray-800 disabled:opacity-30"
-              >
-                Connect
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

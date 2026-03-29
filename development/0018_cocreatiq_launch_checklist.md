@@ -7,7 +7,9 @@
 ## Phase 1: Foundation (Build the OS for one user)
 
 ### 1.1 Operator Type Configs
-- [ ] Sales Operator YAML + superpowers (Hormozi CLOSER, AAA, objections)
+- [ ] Sales Operator YAML + superpowers (Hormozi C
+-+
+LOSER, AAA, objections)
 - [ ] Lead Gen Operator YAML + superpowers (Priestley assessment, Gian ads)
 - [ ] Marketing/Creator Operator YAML + superpowers (Lamar quality, Gary Vee volume, autoresearch loop)
 - [ ] Onboarding Operator YAML + superpowers (Platten 3 C's)

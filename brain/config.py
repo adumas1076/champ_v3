@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     letta_model: str = Field(default="openai/gpt-4o-mini", alias="LETTA_MODEL")
     letta_embedding: str = Field(default="openai/text-embedding-3-small", alias="LETTA_EMBEDDING")
 
+    # --- Mem0 Global Memory (optional — graceful degradation if not configured) ---
+    mem0_enabled: bool = Field(default=False, alias="MEM0_ENABLED")
+    mem0_llm_provider: str = Field(default="", alias="MEM0_LLM_PROVIDER")
+    mem0_llm_model: str = Field(default="", alias="MEM0_LLM_MODEL")
+    mem0_embedder_provider: str = Field(default="", alias="MEM0_EMBEDDER_PROVIDER")
+    mem0_embedder_model: str = Field(default="", alias="MEM0_EMBEDDER_MODEL")
+    mem0_vector_store: str = Field(default="", alias="MEM0_VECTOR_STORE")
+
     # --- Ears Sidecar ---
     ears_health_url: str = Field(
         default="http://127.0.0.1:8101/health", alias="EARS_HEALTH_URL"

@@ -24,6 +24,7 @@ from brain.llm_client import LiteLLMClient
 from brain.memory import SupabaseMemory
 from mind.healing import HealingLoop
 from mind.letta_memory import LettaMemory
+from mind.mem0_memory import Mem0Memory
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +53,14 @@ class BrainPipeline:
         self.memory = SupabaseMemory(settings)
         self.healing = HealingLoop()
         self.letta = LettaMemory(settings)
+        self.mem0 = Mem0Memory(settings)
 
     async def startup(self) -> None:
         """Initialize components on app startup."""
         await self.persona_loader.load()
         await self.memory.connect()
         letta_ok = await self.letta.connect()
+        mem0_ok = await self.mem0.connect()
 
         # Sync Supabase profile → Letta memory.human block (default user on startup)
         if letta_ok:
@@ -71,7 +74,8 @@ class BrainPipeline:
 
         logger.info(
             f"Brain pipeline initialized | "
-            f"Letta: {'connected' if letta_ok else 'offline (graceful degradation)'}"
+            f"Letta: {'connected' if letta_ok else 'offline (graceful degradation)'} | "
+            f"Mem0: {'connected' if mem0_ok else 'offline (graceful degradation)'}"
         )
 
     async def shutdown(self) -> None:
@@ -79,6 +83,7 @@ class BrainPipeline:
         await self.llm_client.close()
         await self.memory.disconnect()
         await self.letta.disconnect()
+        await self.mem0.disconnect()
         logger.info("Brain pipeline shut down")
 
     async def handle_request(
@@ -108,11 +113,14 @@ class BrainPipeline:
             logger.info(f"[HEALING] Mode override: {mode.value} -> {healing.mode_override.value}")
             mode = healing.mode_override
 
-        # 3. Fetch memory context (Supabase + Letta) — per user
+        # 3. Fetch memory context (Supabase + Letta + Mem0) — per user
         memory_context = await self.memory.get_context(user_id)
         letta_context = await self.letta.get_all_blocks()
         if letta_context:
             memory_context = (memory_context + "\n\n" + letta_context) if memory_context else letta_context
+        mem0_context = await self.mem0.get_context(user_id, query=user_message)
+        if mem0_context:
+            memory_context = (memory_context + "\n\n" + mem0_context) if memory_context else mem0_context
         if healing.warning_text:
             memory_context = memory_context + "\n\n" + healing.warning_text if memory_context else healing.warning_text
         if loop_instruction:
@@ -208,11 +216,14 @@ class BrainPipeline:
             logger.info(f"[STREAM][HEALING] Mode override: {mode.value} -> {healing.mode_override.value}")
             mode = healing.mode_override
 
-        # 3. Fetch memory context (Supabase + Letta) — per user
+        # 3. Fetch memory context (Supabase + Letta + Mem0) — per user
         memory_context = await self.memory.get_context(user_id)
         letta_context = await self.letta.get_all_blocks()
         if letta_context:
             memory_context = (memory_context + "\n\n" + letta_context) if memory_context else letta_context
+        mem0_context = await self.mem0.get_context(user_id, query=user_message)
+        if mem0_context:
+            memory_context = (memory_context + "\n\n" + mem0_context) if memory_context else mem0_context
         if healing.warning_text:
             memory_context = memory_context + "\n\n" + healing.warning_text if memory_context else healing.warning_text
         if loop_instruction:

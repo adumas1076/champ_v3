@@ -9,4 +9,5 @@ supabase>=2.9.0
 requests>=2.32.0
 livekit-api>=1.0.0
 letta-client>=1.7.0
+mem0ai>=0.1.0
 python-multipart>=0.0.9

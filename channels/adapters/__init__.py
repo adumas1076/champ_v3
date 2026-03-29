@@ -1,0 +1,1 @@
+# Cocreatiq OS — Channel Adapters

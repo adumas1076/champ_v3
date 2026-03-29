@@ -17,5 +17,6 @@ COPY agent.py tools.py ./
 COPY hands/ ./hands/
 COPY operators/ ./operators/
 COPY persona/ ./persona/
+COPY aioscp/ ./aioscp/
 
 CMD ["python", "agent.py", "start"]

@@ -911,6 +911,200 @@ def test_body_motion():
     return failed == 0
 
 
+def test_studio():
+    """Test the video studio system (no GPU/ffmpeg required for structure tests)."""
+    print("\n" + "=" * 60)
+    print("CHAMP Avatar -- Studio Pipeline Test")
+    print("=" * 60)
+
+    import tempfile
+    import os
+    import json
+
+    passed = 0
+    failed = 0
+
+    def check(name, condition, detail=""):
+        nonlocal passed, failed
+        if condition:
+            passed += 1
+            print(f"  [OK] {name}")
+        else:
+            failed += 1
+            print(f"  [FAIL] {name} {detail}")
+
+    # ── 1. Imports ──
+    print("\n[1] Studio imports...")
+    try:
+        from avatar.studio.video_assembler import VideoAssembler, AssemblyConfig, _check_ffmpeg
+        from avatar.studio.render_job import (
+            RenderJob, RenderConfig, RenderResult, RenderStatus,
+            RenderProgress, VoiceInterface, FallbackVoice,
+        )
+        from avatar.studio.templates import (
+            VideoTemplate, get_template, list_templates,
+            load_custom_template, save_custom_template,
+            BUILTIN_TEMPLATES,
+        )
+        check("All studio imports", True)
+    except ImportError as e:
+        print(f"  [FAIL] Import error: {e}")
+        return False
+
+    # ── 2. VideoAssembler config ──
+    print("\n[2] VideoAssembler...")
+    cfg = AssemblyConfig()
+    check("Default FPS = 25", cfg.fps == 25.0)
+    check("Default codec = libx264", cfg.video_codec == "libx264")
+    check("Default CRF = 18", cfg.crf == 18)
+
+    assembler = VideoAssembler()
+    check("Assembler created", assembler is not None)
+
+    has_ffmpeg = _check_ffmpeg()
+    check(f"ffmpeg available: {has_ffmpeg}", True)  # Info, not pass/fail
+
+    # ── 3. RenderConfig ──
+    print("\n[3] RenderConfig...")
+    rc = RenderConfig()
+    check("Default width = 512", rc.width == 512)
+    check("Default fps = 25", rc.fps == 25.0)
+    check("Default upscale = False", rc.upscale == False)
+    check("Default include_body = False", rc.include_body == False)
+
+    rc_custom = RenderConfig(upscale=True, upscale_factor=4, include_body=True)
+    check("Custom config upscale", rc_custom.upscale == True)
+    check("Custom config body", rc_custom.include_body == True)
+
+    # ── 4. RenderStatus enum ──
+    print("\n[4] RenderStatus...")
+    check("PENDING exists", RenderStatus.PENDING.value == "pending")
+    check("RENDERING_FRAMES exists", RenderStatus.RENDERING_FRAMES.value == "rendering_frames")
+    check("COMPLETE exists", RenderStatus.COMPLETE.value == "complete")
+    check("FAILED exists", RenderStatus.FAILED.value == "failed")
+    check("8 status values", len(RenderStatus) == 8)
+
+    # ── 5. FallbackVoice ──
+    print("\n[5] FallbackVoice (test TTS)...")
+    voice = FallbackVoice(words_per_minute=150)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        wav_path = voice.synthesize("Hello this is a test sentence with ten words total here", {})
+        check("FallbackVoice produces WAV", os.path.isfile(wav_path))
+        check("WAV has content", os.path.getsize(wav_path) > 100)
+
+        # Load and check duration
+        import wave
+        with wave.open(wav_path, "r") as wf:
+            duration = wf.getnframes() / wf.getframerate()
+        check("WAV duration > 1s", duration > 1.0, f"got {duration:.2f}s")
+
+        os.unlink(wav_path)
+
+    # ── 6. RenderJob creation ──
+    print("\n[6] RenderJob creation...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        job = RenderJob(
+            script="Hello, welcome to our product demo.",
+            avatar_id="test_avatar",
+            output_dir=tmpdir,
+        )
+        check("Job created", job is not None)
+        check("Job has ID", len(job.job_id) == 8)
+        check("Job script stored", job.script == "Hello, welcome to our product demo.")
+        check("Job avatar_id stored", job.avatar_id == "test_avatar")
+        check("Job has fallback voice", isinstance(job.voice, FallbackVoice))
+
+        # Test audio chunking
+        test_audio = np.zeros(32000, dtype=np.float32)  # 2 seconds
+        chunks = job._chunk_audio(test_audio)
+        check("Audio chunking produces chunks", len(chunks) > 0)
+        check("Each chunk is numpy array", all(isinstance(c, np.ndarray) for c in chunks))
+
+        # Progress callback
+        progress_updates = []
+        job2 = RenderJob(
+            script="Test",
+            avatar_id="test",
+            output_dir=tmpdir,
+            on_progress=lambda p: progress_updates.append(p),
+        )
+        job2._update_progress(RenderStatus.PENDING, 0.0, "test")
+        check("Progress callback fires", len(progress_updates) == 1)
+        check("Progress has status", progress_updates[0].status == RenderStatus.PENDING)
+
+    # ── 7. Templates ──
+    print("\n[7] Video templates...")
+    check("7 built-in templates", len(BUILTIN_TEMPLATES) == 7)
+
+    # Get specific template
+    demo = get_template("product_demo")
+    check("product_demo template exists", demo.template_id == "product_demo")
+    check("Template has name", demo.name == "Product Demo")
+    check("Template has category", demo.category == "marketing")
+    check("Template has render_config", "upscale" in demo.render_config)
+    check("Template has voice_config", "speed" in demo.voice_config)
+
+    # List by category
+    marketing = list_templates(category="marketing")
+    check("Marketing templates > 0", len(marketing) > 0)
+    check("All marketing category",
+          all(t.category == "marketing" for t in marketing))
+
+    social = list_templates(category="social")
+    check("Social templates exist", len(social) > 0)
+
+    all_templates = list_templates()
+    check("All templates = 7", len(all_templates) == 7)
+
+    # Get nonexistent
+    try:
+        get_template("nonexistent")
+        check("Nonexistent template raises", False)
+    except ValueError:
+        check("Nonexistent template raises ValueError", True)
+
+    # Create render job from template
+    job_from_template = demo.create_render_job(
+        script="Check out our amazing product",
+        avatar_id="anthony",
+    )
+    check("Template creates RenderJob", isinstance(job_from_template, RenderJob))
+    check("Template job has script", job_from_template.script == "Check out our amazing product")
+
+    # Save/load custom template
+    with tempfile.TemporaryDirectory() as tmpdir:
+        custom = VideoTemplate(
+            template_id="custom_test",
+            name="My Custom Template",
+            description="Test template",
+            category="custom",
+        )
+        custom_path = os.path.join(tmpdir, "custom.json")
+        save_custom_template(custom, custom_path)
+        check("Custom template saved", os.path.isfile(custom_path))
+
+        loaded = load_custom_template(custom_path)
+        check("Custom template loaded", loaded.template_id == "custom_test")
+        check("Custom template name", loaded.name == "My Custom Template")
+
+    # ── 8. Voice spec ──
+    print("\n[8] Voice interface spec...")
+    try:
+        import avatar.voice_spec
+        check("voice_spec.py importable", True)
+    except ImportError as e:
+        check("voice_spec.py importable", False, str(e))
+
+    # ── Summary ──
+    total = passed + failed
+    print(f"\n{'=' * 60}")
+    print(f"Studio Pipeline Results: {passed}/{total} passed, {failed} failed")
+    print("=" * 60)
+
+    return failed == 0
+
+
 if __name__ == "__main__":
     success1 = test_pipeline()
     success2 = test_chunk_pipeline()
@@ -919,5 +1113,6 @@ if __name__ == "__main__":
     success5 = test_lora_pipeline()
     success6 = test_gpu_backend()
     success7 = test_body_motion()
-    all_pass = success1 and success2 and success3 and success4 and success5 and success6 and success7
+    success8 = test_studio()
+    all_pass = all([success1, success2, success3, success4, success5, success6, success7, success8])
     sys.exit(0 if all_pass else 1)

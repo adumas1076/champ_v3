@@ -74,6 +74,7 @@ class ChampOperator(BaseOperator):
             llm=openai.realtime.RealtimeModel(
                 voice="ash",
                 temperature=0.8,
+                modalities=["text", "audio"],
             ),
             chat_ctx=chat_ctx,
             # Champ gets ALL OS tools — no restrictions

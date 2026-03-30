@@ -838,6 +838,27 @@ async def hands_status():
     return get_hands_status()
 
 
+@app.post("/v1/hands/execute")
+async def hands_execute(request: Request):
+    """Proxy desktop/browser commands to the connected local agent.
+    Used by the Hetzner voice agent to reach the user's desktop."""
+    from hands.remote import _send_command, is_agent_connected
+
+    if not is_agent_connected():
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "error": "No local hands agent connected"},
+        )
+
+    body = await request.json()
+    command = body.get("command", "")
+    args = body.get("args", {})
+    timeout = body.get("timeout", 60.0)
+
+    result = await _send_command(command, args, timeout=timeout)
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
 

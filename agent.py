@@ -21,7 +21,7 @@ import logging
 
 from dotenv import load_dotenv
 
-from livekit import agents
+from livekit import agents, rtc
 from livekit.agents import AgentSession, RoomInputOptions
 # noise_cancellation disabled — was causing choppy audio on Hetzner
 # from livekit.plugins import noise_cancellation
@@ -74,6 +74,12 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     await ctx.connect()
+
+    # Enable Audio RED (Redundant Encoding) to reduce choppiness
+    # Sends redundant audio packets so dropped ones don't cause gaps
+    for pub in ctx.room.local_participant.track_publications.values():
+        if pub.track and pub.track.kind == rtc.TrackKind.KIND_AUDIO:
+            await pub.track.set_red_enabled(True)
 
     # Generate the operator's greeting
     await session.generate_reply(

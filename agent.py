@@ -23,8 +23,7 @@ from dotenv import load_dotenv
 
 from livekit import agents, rtc
 from livekit.agents import AgentSession, RoomInputOptions
-# noise_cancellation disabled — was causing choppy audio on Hetzner
-# from livekit.plugins import noise_cancellation
+from livekit.plugins import noise_cancellation, silero
 from tools import start_brain_session, end_brain_session, poll_completed_runs
 
 # ---- Operator imports ----
@@ -68,6 +67,11 @@ async def entrypoint(ctx: agents.JobContext):
         room=ctx.room,
         agent=operator,
         room_input_options=RoomInputOptions(
+            noise_cancellation=noise_cancellation.BVC(),
+            vad=silero.VAD.load(
+                min_speech_duration=0.1,
+                min_silence_duration=0.5,
+            ),
             video_enabled=True,
             text_enabled=True,
         ),

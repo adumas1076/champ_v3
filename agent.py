@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 
 from livekit import agents
 from livekit.agents import AgentSession, RoomInputOptions
+from livekit.plugins import noise_cancellation
 from tools import start_brain_session, end_brain_session, poll_completed_runs
 
 # ---- Operator imports ----
@@ -66,6 +67,7 @@ async def entrypoint(ctx: agents.JobContext):
         room=ctx.room,
         agent=operator,
         room_input_options=RoomInputOptions(
+            noise_cancellation=noise_cancellation.BVC(),
             video_enabled=True,
             text_enabled=True,
         ),

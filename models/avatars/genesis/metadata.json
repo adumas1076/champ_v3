@@ -1,0 +1,15 @@
+{
+  "avatar_id": "genesis",
+  "name": "Genesis",
+  "source_type": "image",
+  "source_path": "c:\\Users\\libby\\OneDrive\\Desktop\\tool_shed\\CHAMP\\reference\\skipper_app_v5-main\\frontend\\src\\assets\\genesis-avatar.jpg",
+  "frame_count": 1,
+  "created_at": "2026-03-30T12:09:46.588508",
+  "reference_image": "models\\avatars\\genesis\\reference.png",
+  "frames_dir": null,
+  "splat_path": "models\\avatars\\genesis\\splat\\preview.ply",
+  "splat_preview_path": "models\\avatars\\genesis\\splat\\preview.ply",
+  "splat_status": "ready",
+  "num_gaussians": 2000,
+  "synthetic_views_dir": null
+}

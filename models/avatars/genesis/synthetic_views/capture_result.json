@@ -1,0 +1,16 @@
+{
+  "avatar_id": "genesis",
+  "output_dir": "models\\avatars\\genesis\\synthetic_views",
+  "num_views": 100,
+  "num_verified": 100,
+  "num_rejected": 0,
+  "expressions": [
+    "neutral",
+    "smile",
+    "talk",
+    "think"
+  ],
+  "upscaled": false,
+  "processing_time_sec": 40.28147292137146,
+  "created_at": "2026-03-30T12:13:39.138604"
+}

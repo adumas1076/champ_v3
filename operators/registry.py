@@ -24,6 +24,8 @@ from enum import Enum
 from livekit.agents.llm import ChatContext
 
 from operators.base import BaseOperator, CONFIGS_DIR
+
+from operator_context import OperatorContext, set_operator_context, clear_operator_context
 from operators.aioscp_bridge import (
     generate_manifest,
     get_os_capabilities,
@@ -99,6 +101,7 @@ class OperatorRegistry:
         self._manifests: dict[str, object] = {}  # name -> OperatorManifest
         # A2A state
         self._instances: dict[str, BaseOperator] = {}   # active operator instances
+        self._sessions: dict[str, dict] = {}             # session_id -> {operator, context, operator_name}
         self._tasks: dict[str, A2ATask] = {}             # task_id -> A2ATask
         self._subscriptions: dict[str, list[Callable]] = {}  # channel -> [callbacks]
         self._message_queue: asyncio.Queue = asyncio.Queue()
@@ -157,6 +160,65 @@ class OperatorRegistry:
             f"Unknown operator '{name}'. "
             f"Available: {', '.join(available) or 'none'}"
         )
+
+    def spawn_with_context(
+        self,
+        name: str,
+        session_id: str,
+        memory_text: str = "",
+        user_id: str = "00000000-0000-0000-0000-000000000001",
+        model_used: str = "gpt-4o",
+        channel: str = "voice",
+        chat_ctx: ChatContext = None,
+    ) -> BaseOperator:
+        """
+        Spawn operator with isolated context.
+        Each session gets its own context — no shared state.
+        """
+        # Create isolated context
+        ctx = OperatorContext(
+            operator_name=name,
+            session_id=session_id,
+            user_id=user_id,
+            memory_text=memory_text,
+            model_used=model_used,
+            channel=channel,
+        )
+        set_operator_context(ctx)
+
+        # Spawn the operator
+        operator = self.spawn(name, chat_ctx=chat_ctx)
+
+        # Track the session
+        self._sessions[session_id] = {
+            "operator": operator,
+            "context": ctx,
+            "operator_name": name,
+        }
+
+        logger.info(
+            f"[OS] Spawned '{name}' with context isolation | "
+            f"session={session_id[:8]}... memory={len(memory_text)} chars"
+        )
+        return operator
+
+    def cleanup_session(self, session_id: str) -> None:
+        """Clean up a session — called on disconnect."""
+        if session_id in self._sessions:
+            name = self._sessions[session_id]["operator_name"]
+            del self._sessions[session_id]
+            clear_operator_context()
+            logger.info(f"[OS] Session cleaned: {name} ({session_id[:8]}...)")
+
+    def get_active_sessions(self) -> dict:
+        """Return all active sessions."""
+        return {
+            sid: {
+                "operator": info["operator_name"],
+                "context": info["context"],
+            }
+            for sid, info in self._sessions.items()
+        }
 
     def list_operators(self) -> list[str]:
         """List all registered operator names."""

@@ -32,6 +32,7 @@ from self_mode.models import (
     SubTaskStatus,
 )
 from self_mode.parser import GoalCardParser
+from self_mode.proof_recorder import ProofRecorder
 from self_mode.safety import SafetyRails
 
 logger = logging.getLogger(__name__)
@@ -138,13 +139,15 @@ class SelfModeEngine:
     Loop: Receive → Plan → Approve → Execute → Review → Fix → Package → Learn → Deliver
     """
 
-    def __init__(self, settings: Settings, memory=None):
+    def __init__(self, settings: Settings, memory=None, record_proof: bool = True):
         self.settings = settings
         self.memory = memory
         self.llm_url = f"{settings.litellm_base_url}/chat/completions"
         self.llm_api_key = settings.litellm_api_key
         self.default_model = settings.default_model
         self.safety = SafetyRails()
+        self.record_proof = record_proof
+        self._proof_recorder: Optional[ProofRecorder] = None
         self.output_dir = (
             Path(settings.persona_dir).parent / "output" / "self_mode"
         )
@@ -256,6 +259,16 @@ class SelfModeEngine:
 
         # ---- STEP 3: EXECUTE ----
         logger.info("[SELF MODE] Step 3: EXECUTE")
+
+        # Start proof-of-work recording (OpenScreen harvest)
+        if self.record_proof:
+            try:
+                self._proof_recorder = ProofRecorder(run_id=run_id)
+                self._proof_recorder.start()
+            except Exception as e:
+                logger.warning(f"[SELF MODE] Proof recording failed to start (non-fatal): {e}")
+                self._proof_recorder = None
+
         await self._save_run(
             run_id, goal_card, step=STEPS["execute"],
             status=RunStatus.EXECUTING.value, subtasks=subtasks,
@@ -274,6 +287,11 @@ class SelfModeEngine:
                 continue
 
             st.status = SubTaskStatus.IN_PROGRESS.value
+
+            # Track step for proof recording
+            if self._proof_recorder and self._proof_recorder.is_recording:
+                self._proof_recorder.mark_step_start(st.id, st.description)
+
             try:
                 output = await self._execute_subtask(st, goal_card)
                 st.status = SubTaskStatus.COMPLETED.value
@@ -284,10 +302,17 @@ class SelfModeEngine:
                     )
                 st.output = output[:2000]
                 execution_log.append(f"[OK] {st.description}")
+
+                if self._proof_recorder and self._proof_recorder.is_recording:
+                    self._proof_recorder.mark_step_end(st.id, "completed")
+
             except Exception as e:
                 st.status = SubTaskStatus.FAILED.value
                 st.error = str(e)
                 execution_log.append(f"[FAIL] {st.description}: {e}")
+
+                if self._proof_recorder and self._proof_recorder.is_recording:
+                    self._proof_recorder.mark_step_end(st.id, "failed")
 
                 # Stop condition: same error twice
                 error_sig = str(e)[:100]
@@ -367,11 +392,38 @@ class SelfModeEngine:
 
         # ---- STEP 6: PACKAGE ----
         logger.info("[SELF MODE] Step 6: PACKAGE")
+
+        # Stop proof recording and generate bundle
+        proof_bundle = None
+        if self._proof_recorder and self._proof_recorder.is_recording:
+            try:
+                proof_bundle = self._proof_recorder.stop(
+                    subtasks=[s.to_dict() for s in subtasks],
+                    goal_objective=goal_card.objective,
+                )
+                logger.info(
+                    f"[SELF MODE] Proof bundle: {proof_bundle.duration_ms / 1000:.1f}s, "
+                    f"{proof_bundle.file_size_bytes / 1024 / 1024:.1f}MB"
+                )
+            except Exception as e:
+                logger.error(f"[SELF MODE] Proof recording stop failed (non-fatal): {e}")
+            self._proof_recorder = None
+
         final_status = "Complete" if review.get("passed") else "Partial"
         elapsed = time.time() - start_time
         tool_calls = len(
             [s for s in subtasks if s.status == SubTaskStatus.COMPLETED.value]
         )
+
+        # Build evidence with proof recording info
+        evidence = self._collect_evidence(subtasks, review, execution_log)
+        if proof_bundle and proof_bundle.has_video:
+            evidence += (
+                f"\n\nPROOF RECORDING: {proof_bundle.video_path}\n"
+                f"Duration: {proof_bundle.duration_ms / 1000:.1f}s | "
+                f"Size: {proof_bundle.file_size_bytes / 1024 / 1024:.1f}MB | "
+                f"Steps tracked: {proof_bundle.step_count}"
+            )
 
         result_pack = ResultPack(
             goal_id=goal_card.goal_id,
@@ -387,10 +439,12 @@ class SelfModeEngine:
                 f"Model: {self.default_model} | "
                 f"Tool calls: {tool_calls}"
             ),
-            evidence=self._collect_evidence(
-                subtasks, review, execution_log
-            ),
+            evidence=evidence,
         )
+
+        # Attach proof bundle to result pack
+        if proof_bundle and proof_bundle.has_video:
+            result_pack.proof_recording = proof_bundle.to_dict()
 
         await self._save_run(
             run_id, goal_card, step=STEPS["package"],

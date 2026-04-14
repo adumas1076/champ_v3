@@ -1,0 +1,5087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content Matrix Graph — Cocreatiq OS</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0f;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+        }
+        #graph-container { width: 100vw; height: 100vh; position: relative; }
+        #network { width: 100%; height: 100%; }
+
+        #info-panel {
+            position: fixed; top: 20px; right: 20px; width: 380px;
+            max-height: calc(100vh - 40px); overflow-y: auto;
+            background: rgba(15, 15, 25, 0.95);
+            border: 1px solid rgba(120, 80, 255, 0.3);
+            border-radius: 12px; padding: 24px;
+            backdrop-filter: blur(20px); display: none; z-index: 10;
+        }
+        #info-panel.visible { display: block; }
+        #info-panel h2 { font-size: 18px; color: #a78bfa; margin-bottom: 4px; }
+        #info-panel .subtitle { font-size: 12px; color: #666; margin-bottom: 16px; }
+        #info-panel .section { margin-bottom: 16px; }
+        #info-panel .section h3 {
+            font-size: 13px; color: #7c3aed; text-transform: uppercase;
+            letter-spacing: 1px; margin-bottom: 8px;
+        }
+        #info-panel .section p { font-size: 13px; line-height: 1.5; color: #bbb; }
+        #info-panel .edge-list { list-style: none; padding: 0; }
+        #info-panel .edge-list li {
+            font-size: 12px; padding: 4px 0; color: #999;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        #info-panel .edge-list li .rel { color: #f59e0b; font-weight: 600; }
+        #info-panel .edge-list li .conf { color: #666; font-size: 10px; }
+        #info-panel .close-btn {
+            position: absolute; top: 12px; right: 16px;
+            background: none; border: none; color: #666; font-size: 20px; cursor: pointer;
+        }
+        #info-panel .close-btn:hover { color: #fff; }
+        .tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 4px; margin: 2px; }
+        .tag-framework { background: rgba(124,58,237,0.2); color: #a78bfa; }
+        .tag-element { background: rgba(236,72,153,0.2); color: #f472b6; }
+        .tag-rule { background: rgba(6,182,212,0.2); color: #22d3ee; }
+        .tag-entity { background: rgba(239,68,68,0.2); color: #f87171; }
+        .tag-lesson { background: rgba(16,185,129,0.2); color: #34d399; }
+        .tag-fact { background: rgba(245,158,11,0.2); color: #fbbf24; }
+
+        #header {
+            position: fixed; top: 20px; left: 20px; z-index: 10;
+        }
+        #header h1 {
+            font-size: 22px; font-weight: 700;
+            background: linear-gradient(135deg, #a78bfa, #ec4899);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        #header .tag-line { font-size: 11px; color: #666; margin-top: 4px; }
+
+        #stats {
+            position: fixed; bottom: 20px; left: 20px;
+            display: flex; gap: 24px; z-index: 10;
+        }
+        .stat { text-align: center; }
+        .stat .value {
+            font-size: 28px; font-weight: 700;
+            background: linear-gradient(135deg, #a78bfa, #ec4899);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .stat .label {
+            font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        #search {
+            position: fixed; top: 76px; left: 20px; z-index: 10;
+        }
+        #search input {
+            background: rgba(15, 15, 25, 0.9); border: 1px solid rgba(120, 80, 255, 0.3);
+            color: #e0e0e0; padding: 8px 14px; border-radius: 8px; width: 260px;
+            font-size: 13px; outline: none; backdrop-filter: blur(10px);
+        }
+        #search input:focus { border-color: #a78bfa; }
+
+        #legend {
+            position: fixed; bottom: 20px; right: 20px;
+            background: rgba(15, 15, 25, 0.95); border: 1px solid rgba(120, 80, 255, 0.2);
+            border-radius: 12px; padding: 14px 18px; z-index: 10; font-size: 11px;
+        }
+        #legend .item { display: flex; align-items: center; margin: 3px 0; }
+        #legend .dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        #legend hr { border-color: rgba(255,255,255,0.1); margin: 6px 0; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Content Matrix Graph</h1>
+        <div class="tag-line">Cocreatiq OS — Operator Knowledge Graph</div>
+    </div>
+
+    <div id="search">
+        <input type="text" id="searchInput" placeholder="Search nodes..." oninput="searchNodes(this.value)">
+    </div>
+
+    <div id="graph-container"><div id="network"></div></div>
+
+    <div id="info-panel">
+        <button class="close-btn" onclick="closePanel()">&times;</button>
+        <h2 id="panel-title"></h2>
+        <div class="subtitle" id="panel-subtitle"></div>
+        <div id="panel-content"></div>
+    </div>
+
+    <div id="stats">
+        <div class="stat"><div class="value">81</div><div class="label">Nodes</div></div>
+        <div class="stat"><div class="value">104</div><div class="label">Edges</div></div>
+        <div class="stat"><div class="value">15</div><div class="label">Clusters</div></div>
+        <div class="stat"><div class="value">22x</div><div class="label">Token Savings</div></div>
+        <div class="stat"><div class="value">15</div><div class="label">Sources</div></div>
+    </div>
+
+    <div id="legend">
+        <div class="item"><div class="dot" style="background:#7c3aed"></div>Framework</div>
+        <div class="item"><div class="dot" style="background:#ec4899"></div>Element</div>
+        <div class="item"><div class="dot" style="background:#06b6d4"></div>Rule / Skill</div>
+        <div class="item"><div class="dot" style="background:#ef4444"></div>Entity</div>
+        <div class="item"><div class="dot" style="background:#f59e0b"></div>Fact</div>
+        <div class="item"><div class="dot" style="background:#10b981"></div>Lesson</div>
+        <div class="item"><div class="dot" style="background:#8b5cf6"></div>Decision</div>
+        <hr>
+        <div class="item"><div class="dot" style="background:#10b981"></div>Proven</div>
+        <div class="item"><div class="dot" style="background:#3b82f6"></div>Extracted</div>
+        <div class="item"><div class="dot" style="background:#f59e0b"></div>Inferred</div>
+        <div class="item"><div class="dot" style="background:#ef4444"></div>Ambiguous</div>
+    </div>
+
+    <script>
+    const nodesData = [
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "label": "0008\nOS Business Matrix\nHormozi Ultimate Sal...",
+    "color": {
+      "background": "#7c3aed",
+      "border": "#a78bfa",
+      "highlight": {
+        "background": "#8b5cf6",
+        "border": "#c4b5fd"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 14,
+      "face": "Segoe UI"
+    },
+    "size": 40,
+    "shape": "dot",
+    "shadow": {
+      "enabled": true,
+      "color": "#7c3aed66",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "framework",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_th",
+    "label": "The 6 Elements of the Ultimate Sales Blueprint",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "element",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_el",
+    "label": "Keep the human first. Always.",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "rule",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ad",
+    "label": "Most of the CLOSER framework doesn't apply to 6...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "rule",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_op",
+    "label": "Operator SOP \u2014 Sales Operator (Built from Hormozi)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "element",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_pr",
+    "label": "Pre-Sale (Before the Call)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "element",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_du",
+    "label": "During the Call \u2014 CLOSER Framework",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "element",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_po",
+    "label": "Post-Sale",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "element",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ke",
+    "label": "\"You can't be in a bad mood and jumping on a tr...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "rule",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_me",
+    "label": "Weekend vs weekday performance",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "rule",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ho",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 0,
+    "_type": "element",
+    "_source": "0008_os_business_matrix_hormozi_sales.md",
+    "_scope": "sales, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0009_os_business_matrix_hormozi_scaling_md_0009_os_business_matrix_hormozi_live_scaling_coaching_1m_",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 1,
+    "_type": "element",
+    "_source": "0009_os_business_matrix_hormozi_scaling.md",
+    "_scope": "operations, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0010_os_business_matrix_priestley_lead_gen_md_0010_os_business_matrix_daniel_priestley_online_assess",
+    "label": "Cross-Reference to Hormozi Frameworks",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 2,
+    "_type": "element",
+    "_source": "0010_os_business_matrix_priestley_lead_gen.md",
+    "_scope": "lead_gen, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0011_os_business_matrix_gian_ad_optimization_md_0010_os_business_matrix_gian_bernard_espino_ad_accou",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 3,
+    "_type": "element",
+    "_source": "0011_os_business_matrix_gian_ad_optimization.md",
+    "_scope": "lead_gen, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0012_os_business_matrix_gian_scaling_masterclass_md_0011_os_business_matrix_gian_bernard_espino_mast",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 4,
+    "_type": "element",
+    "_source": "0012_os_business_matrix_gian_scaling_masterclass.md",
+    "_scope": "operations, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0012_os_business_matrix_platten_onboarding_md_0012_os_business_matrix_jordan_platten_client_onboardi",
+    "label": "The Cocreatiq OS Connection",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 5,
+    "_type": "element",
+    "_source": "0012_os_business_matrix_platten_onboarding.md",
+    "_scope": "onboarding, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0013_os_business_matrix_hormozi_retention_md_0013_os_business_matrix_alex_hormozi_customer_retention",
+    "label": "The Complete Business Matrix Stack (Updated)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 6,
+    "_type": "element",
+    "_source": "0013_os_business_matrix_hormozi_retention.md",
+    "_scope": "retention, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0014_os_business_matrix_lamar_retention_md_0014_os_business_matrix_jaden_lamar_content_retention_str",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 7,
+    "_type": "element",
+    "_source": "0014_os_business_matrix_lamar_retention.md",
+    "_scope": "retention, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0015_os_business_matrix_lamar_brand_growth_md_0015_os_business_matrix_jaden_lamar_brand_growth_3_pil",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 8,
+    "_type": "element",
+    "_source": "0015_os_business_matrix_lamar_brand_growth.md",
+    "_scope": "marketing, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0016_os_business_matrix_lamar_brand_mistakes_md_0016_os_business_matrix_jaden_lamar_7_personal_brand",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 9,
+    "_type": "element",
+    "_source": "0016_os_business_matrix_lamar_brand_mistakes.md",
+    "_scope": "marketing, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0017_os_business_matrix_garyvee_content_model_md_0017_os_business_matrix_gary_vaynerchuk_content_mod",
+    "label": "How This Powers the OS",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 10,
+    "_type": "element",
+    "_source": "0017_os_business_matrix_garyvee_content_model.md",
+    "_scope": "marketing, champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "label": "0025\nOS Business Matrix\nAlex Hormozi\n$100M...",
+    "color": {
+      "background": "#7c3aed",
+      "border": "#a78bfa",
+      "highlight": {
+        "background": "#8b5cf6",
+        "border": "#c4b5fd"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 14,
+      "face": "Segoe UI"
+    },
+    "size": 40,
+    "shape": "dot",
+    "shadow": {
+      "enabled": true,
+      "color": "#7c3aed66",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "framework",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_why_this_",
+    "label": "Why This Matters",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_the_value",
+    "label": "DECREASE the bottom: faster results + less work...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_market_se",
+    "label": "Market Selection: Starving Crowd Framework",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_grand_sla",
+    "label": "Grand Slam Offer: 5-Step Creation Process",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_1_id",
+    "label": "Step 1: Identify the Dream Outcome",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_2_li",
+    "label": "\"I don't trust AI to represent my brand\"",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_3_tr",
+    "label": "Step 3: Transform Problems Into Solutions",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_4_cr",
+    "label": "\"1/10th Test\": How would you ensure success at ...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_5_tr",
+    "label": "Low-cost / Low-value (noise)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_4_offer_e",
+    "label": "4 Offer Enhancers",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_1_scarcit",
+    "label": "1. Scarcity (Quantity-Based)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_2_urgency",
+    "label": "2. Urgency (Time-Based)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_3_bonuses",
+    "label": "Prefer tools/checklists over more training",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_4_guarant",
+    "label": "4. Guarantees (Risk Reversal)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_magic_nam",
+    "label": "MAGIC Naming Formula",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_offer_fat",
+    "label": "Offer Fatigue Rotation",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_operator_",
+    "label": "Time from pitch to close",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_anthony_s",
+    "label": "Anthony's Application (Client 0)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "element",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_vibe_crea",
+    "label": "Effort: Low (frameworks + community, not courses)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_cocreatiq",
+    "label": "Effort: Near zero (voice-first, just talk)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 11,
+    "_type": "rule",
+    "_source": "0025_os_business_matrix_hormozi_offers.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "label": "0026\nOS Business Matrix\nAlex Hormozi\n$100M...",
+    "color": {
+      "background": "#7c3aed",
+      "border": "#a78bfa",
+      "highlight": {
+        "background": "#8b5cf6",
+        "border": "#c4b5fd"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 14,
+      "face": "Segoe UI"
+    },
+    "size": 40,
+    "shape": "dot",
+    "shadow": {
+      "enabled": true,
+      "color": "#7c3aed66",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "framework",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_why_this_ma",
+    "label": "Why This Matters",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_the_core_fo",
+    "label": "The Core Four (Lead Generation Channels)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_1_w",
+    "label": "\"Hey, I'm building something new \u2014 know anyone ...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_2_c",
+    "label": "Volume: 100 outreaches per day minimum",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_3_c",
+    "label": "Volume: 80+ pieces per week (Hormozi's number)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_4_p",
+    "label": "Test systematically (see Ad Assembly below)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_the_rule_of",
+    "label": "The Rule of 100",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_lead_magnet",
+    "label": "\"5 Universal Principles Every Creator Needs Bef...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_7_step_crea",
+    "label": "7-Step Creation Process",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_three_types",
+    "label": "Three Types of Lead Magnets",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_referral_af",
+    "label": "Referral/Affiliate Program Design",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_incentive_d",
+    "label": "Incentive Design",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_gamificatio",
+    "label": "Public recognition (shoutouts, badges, features)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_scaling_aff",
+    "label": "Scaling Affiliates",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_4_pillar_sc",
+    "label": "4-Pillar Scaling Framework",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_speed_to_le",
+    "label": "Speed-to-Lead",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_operator_so",
+    "label": "Operator SOP: Lead Generation",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_anthony_s_a",
+    "label": "Anthony's Application (Client 0)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "element",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_immediate_w",
+    "label": "**Lead Magnet:** \"The 3-Step Framework That 300...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_short_term_",
+    "label": "**Referral Program:** Founding members get 50% ...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_scale_month",
+    "label": "**Affiliate program open to community members**",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 12,
+    "_type": "rule",
+    "_source": "0026_os_business_matrix_hormozi_leads.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "label": "0027\nOS Business Matrix\nAlex Hormozi\nConte...",
+    "color": {
+      "background": "#7c3aed",
+      "border": "#a78bfa",
+      "highlight": {
+        "background": "#8b5cf6",
+        "border": "#c4b5fd"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 14,
+      "face": "Segoe UI"
+    },
+    "size": 40,
+    "shape": "dot",
+    "shadow": {
+      "enabled": true,
+      "color": "#7c3aed66",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "framework",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_wh",
+    "label": "Why This Matters",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ho",
+    "label": "4 team members dedicated to content",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "rule",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_co",
+    "label": "Content Production",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_th",
+    "label": "\"If the free stuff is this good, the paid stuff...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "rule",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_an",
+    "label": "**5-8x Hormozi's output at a fraction of the co...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "rule",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_re",
+    "label": "Reverse Pipeline",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ad",
+    "label": "Ads: Cost per lead (CPL), cost per acquisition ...",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "rule",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_st",
+    "label": "Never stop testing \u2014 creative fatigue is constant",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "rule",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_la",
+    "label": "Landing Page Conversion",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ab",
+    "label": "Above-the-Fold Formula",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ru",
+    "label": "Mobile-first (80%+ of traffic is mobile)",
+    "color": {
+      "background": "#06b6d4",
+      "border": "#22d3ee",
+      "highlight": {
+        "background": "#22d3ee",
+        "border": "#67e8f9"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 12,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#06b6d466",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "rule",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_da",
+    "label": "Daily Rhythm (per face)",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_we",
+    "label": "Weekly Rhythm",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ke",
+    "label": "Key Metric: RPM Over Views",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_op",
+    "label": "Operator SOP: Content & Ad Production",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 13,
+    "_type": "element",
+    "_source": "0027_os_business_matrix_hormozi_content.md",
+    "_scope": "champ",
+    "_desc": ""
+  },
+  {
+    "id": "0028_os_business_matrix_hormozi_unit_economics_md_0028_os_business_matrix_alex_hormozi_unit_economic",
+    "label": "The Competitive Moat Formula",
+    "color": {
+      "background": "#ec4899",
+      "border": "#f472b6",
+      "highlight": {
+        "background": "#f472b6",
+        "border": "#fbcfe8"
+      }
+    },
+    "font": {
+      "color": "#fff",
+      "size": 10,
+      "face": "Segoe UI"
+    },
+    "size": 25,
+    "shape": "dot",
+    "shadow": {
+      "enabled": false,
+      "color": "#ec489966",
+      "size": 15
+    },
+    "group": 14,
+    "_type": "element",
+    "_source": "0028_os_business_matrix_hormozi_unit_economics.md",
+    "_scope": "champ",
+    "_desc": ""
+  }
+];
+    const edgesData = [
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_th",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_el",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ad",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_op",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_pr",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_du",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_po",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ke",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_me",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ho",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_el",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_el",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ad",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ad",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ke",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_ke",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_me",
+    "to": "0008_os_business_matrix_hormozi_sales_md_0008_os_business_matrix_hormozi_ultimate_sales_blueprint_me",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0009_os_business_matrix_hormozi_scaling_md_0009_os_business_matrix_hormozi_live_scaling_coaching_1m_",
+    "to": "0009_os_business_matrix_hormozi_scaling_md_0009_os_business_matrix_hormozi_live_scaling_coaching_1m_",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0010_os_business_matrix_priestley_lead_gen_md_0010_os_business_matrix_daniel_priestley_online_assess",
+    "to": "0010_os_business_matrix_priestley_lead_gen_md_0010_os_business_matrix_daniel_priestley_online_assess",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0011_os_business_matrix_gian_ad_optimization_md_0010_os_business_matrix_gian_bernard_espino_ad_accou",
+    "to": "0011_os_business_matrix_gian_ad_optimization_md_0010_os_business_matrix_gian_bernard_espino_ad_accou",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0012_os_business_matrix_gian_scaling_masterclass_md_0011_os_business_matrix_gian_bernard_espino_mast",
+    "to": "0012_os_business_matrix_gian_scaling_masterclass_md_0011_os_business_matrix_gian_bernard_espino_mast",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0012_os_business_matrix_platten_onboarding_md_0012_os_business_matrix_jordan_platten_client_onboardi",
+    "to": "0012_os_business_matrix_platten_onboarding_md_0012_os_business_matrix_jordan_platten_client_onboardi",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0013_os_business_matrix_hormozi_retention_md_0013_os_business_matrix_alex_hormozi_customer_retention",
+    "to": "0013_os_business_matrix_hormozi_retention_md_0013_os_business_matrix_alex_hormozi_customer_retention",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0014_os_business_matrix_lamar_retention_md_0014_os_business_matrix_jaden_lamar_content_retention_str",
+    "to": "0014_os_business_matrix_lamar_retention_md_0014_os_business_matrix_jaden_lamar_content_retention_str",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0015_os_business_matrix_lamar_brand_growth_md_0015_os_business_matrix_jaden_lamar_brand_growth_3_pil",
+    "to": "0015_os_business_matrix_lamar_brand_growth_md_0015_os_business_matrix_jaden_lamar_brand_growth_3_pil",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0016_os_business_matrix_lamar_brand_mistakes_md_0016_os_business_matrix_jaden_lamar_7_personal_brand",
+    "to": "0016_os_business_matrix_lamar_brand_mistakes_md_0016_os_business_matrix_jaden_lamar_7_personal_brand",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0017_os_business_matrix_garyvee_content_model_md_0017_os_business_matrix_gary_vaynerchuk_content_mod",
+    "to": "0017_os_business_matrix_garyvee_content_model_md_0017_os_business_matrix_gary_vaynerchuk_content_mod",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_why_this_",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_the_value",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_market_se",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_grand_sla",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_1_id",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_2_li",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_3_tr",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_4_cr",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_5_tr",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_4_offer_e",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_1_scarcit",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_2_urgency",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_3_bonuses",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_4_guarant",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_magic_nam",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_offer_fat",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_operator_",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_anthony_s",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_vibe_crea",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_cocreatiq",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_the_value",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_the_value",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_2_li",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_2_li",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_4_cr",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_4_cr",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_5_tr",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_step_5_tr",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_3_bonuses",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_3_bonuses",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_operator_",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_operator_",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_vibe_crea",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_vibe_crea",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_cocreatiq",
+    "to": "0025_os_business_matrix_hormozi_offers_md_0025_os_business_matrix_alex_hormozi_100m_offers_cocreatiq",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_why_this_ma",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_the_core_fo",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_1_w",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_2_c",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_3_c",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_4_p",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_the_rule_of",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_lead_magnet",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_7_step_crea",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_three_types",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_referral_af",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_incentive_d",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_gamificatio",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_scaling_aff",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_4_pillar_sc",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_speed_to_le",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_operator_so",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_anthony_s_a",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_immediate_w",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_short_term_",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_scale_month",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_1_w",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_1_w",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_2_c",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_2_c",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_3_c",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_3_c",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_4_p",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_channel_4_p",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_lead_magnet",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_lead_magnet",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_gamificatio",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_gamificatio",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_immediate_w",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_immediate_w",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_short_term_",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_short_term_",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_scale_month",
+    "to": "0026_os_business_matrix_hormozi_leads_md_0026_os_business_matrix_alex_hormozi_100m_leads_scale_month",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_wh",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ho",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_co",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_th",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_an",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_re",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ad",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_st",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_la",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ab",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ru",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_da",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_we",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ke",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_op",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ho",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ho",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_th",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_th",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_an",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_an",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ad",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ad",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_st",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_st",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ru",
+    "to": "0027_os_business_matrix_hormozi_content_md_0027_os_business_matrix_alex_hormozi_content_ad_engine_ru",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  },
+  {
+    "from": "0028_os_business_matrix_hormozi_unit_economics_md_0028_os_business_matrix_alex_hormozi_unit_economic",
+    "to": "0028_os_business_matrix_hormozi_unit_economics_md_0028_os_business_matrix_alex_hormozi_unit_economic",
+    "label": "part_of",
+    "color": {
+      "color": "rgba(59,130,246,0.5)",
+      "highlight": "#3b82f6"
+    },
+    "font": {
+      "size": 9,
+      "color": "#555",
+      "strokeWidth": 0,
+      "face": "Segoe UI"
+    },
+    "arrows": {
+      "to": {
+        "scaleFactor": 0.5
+      }
+    },
+    "width": 1.5,
+    "dashes": false,
+    "_conf": "EXTRACTED",
+    "_reason": ""
+  }
+];
+
+    const nodes = new vis.DataSet(nodesData);
+    const edges = new vis.DataSet(edgesData);
+
+    const container = document.getElementById("network");
+    const data = { nodes, edges };
+    const options = {
+        physics: {
+            forceAtlas2Based: {
+                gravitationalConstant: -60,
+                centralGravity: 0.006,
+                springLength: 180,
+                springConstant: 0.04,
+                damping: 0.4,
+            },
+            solver: "forceAtlas2Based",
+            stabilization: { iterations: 200 },
+        },
+        edges: {
+            smooth: { type: "curvedCW", roundness: 0.12 },
+            font: { size: 9, color: "#555", strokeWidth: 0, face: "Segoe UI" },
+            arrows: { to: { scaleFactor: 0.5 } },
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 200,
+            zoomView: true,
+            dragView: true,
+        },
+    };
+
+    const network = new vis.Network(container, data, options);
+
+    network.on("click", function(params) {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const node = nodesData.find(n => n.id === nodeId);
+            if (node) showPanel(node);
+        } else {
+            closePanel();
+        }
+    });
+
+    function showPanel(node) {
+        const panel = document.getElementById("info-panel");
+        document.getElementById("panel-title").textContent = node.label.replace(/\n/g, " ");
+        document.getElementById("panel-subtitle").textContent = node._type + " — " + node._source;
+
+        let html = "";
+
+        // Type + scope tags
+        html += '<div class="section">';
+        html += '<span class="tag tag-' + node._type + '">' + node._type + '</span> ';
+        html += '<span class="tag" style="background:rgba(255,255,255,0.05);color:#888;">scope: ' + node._scope + '</span>';
+        if (node._desc) html += '<p style="margin-top:8px;">' + node._desc + '</p>';
+        html += '</div>';
+
+        // Connections
+        const connEdges = edgesData.filter(e => e.from === node.id || e.to === node.id);
+        if (connEdges.length > 0) {
+            html += '<div class="section"><h3>Connections (' + connEdges.length + ')</h3><ul class="edge-list">';
+            connEdges.forEach(e => {
+                const otherId = e.from === node.id ? e.to : e.from;
+                const otherNode = nodesData.find(n => n.id === otherId);
+                const otherLabel = otherNode ? otherNode.label.replace(/\n/g, " ") : otherId;
+                const direction = e.from === node.id ? "\u2192" : "\u2190";
+                html += '<li><span class="rel">' + e.label + '</span> ' + direction + ' ' + otherLabel;
+                html += ' <span class="conf">[' + (e._conf || '') + ']</span>';
+                if (e._reason) html += '<br><span style="color:#555;font-size:11px;">' + e._reason + '</span>';
+                html += '</li>';
+            });
+            html += '</ul></div>';
+        }
+
+        document.getElementById("panel-content").innerHTML = html;
+        panel.classList.add("visible");
+    }
+
+    function closePanel() {
+        document.getElementById("info-panel").classList.remove("visible");
+    }
+
+    function searchNodes(query) {
+        if (!query) {
+            nodesData.forEach(n => nodes.update({ id: n.id, hidden: false }));
+            return;
+        }
+        const q = query.toLowerCase();
+        nodesData.forEach(n => {
+            const match = (n.label || "").toLowerCase().includes(q) || (n.id || "").toLowerCase().includes(q) || (n._type || "").includes(q);
+            nodes.update({ id: n.id, hidden: !match });
+        });
+    }
+    </script>
+</body>
+</html>

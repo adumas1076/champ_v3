@@ -131,7 +131,7 @@ class SubTask:
 
 @dataclass
 class ResultPack:
-    """Output format — 7 fields + metadata."""
+    """Output format — 7 fields + metadata + proof recording."""
     goal_id: str
     project_id: str
     run_id: str
@@ -142,9 +142,10 @@ class ResultPack:
     next_actions: str = ""
     time_cost: str = ""
     evidence: str = ""
+    proof_recording: Optional[dict] = None  # ProofBundle.to_dict()
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "goal_id": self.goal_id,
             "project_id": self.project_id,
             "run_id": self.run_id,
@@ -156,6 +157,9 @@ class ResultPack:
             "time_cost": self.time_cost,
             "evidence": self.evidence,
         }
+        if self.proof_recording:
+            result["proof_recording"] = self.proof_recording
+        return result
 
     def to_text(self) -> str:
         """Format as readable Result Pack."""

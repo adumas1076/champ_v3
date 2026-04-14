@@ -45,14 +45,21 @@ content_pillars:
   - "Hiring & team building (CFO first, don't promote closers)"
 
 # ---- Target Platforms ----
+# NOTE: AI influencers DO NOT post on LinkedIn (99% AI detection, ban risk).
+# YouTube low-cadence only (2026 "inauthentic content" policy).
+# B2B audience normally lives on LinkedIn — this AI persona reaches business
+# audience on OTHER platforms (Twitter threads, IG carousels) instead.
 platforms:
   primary:
-    - youtube                         # Long-form breakdowns, case studies
-    - linkedin                        # Professional audience, B2B
+    - twitter                         # Frameworks, hot takes, threads (B2B-oriented)
+    - instagram                       # Reels + carousels with framework visuals (AI-labeled)
   secondary:
-    - twitter                         # Frameworks, hot takes, threads
-    - instagram                       # Reels with framework visuals
-    - tiktok                          # Quick framework breakdowns
+    - tiktok                          # Quick framework breakdowns (AI-labeled)
+    - facebook                        # Cross-post + business groups (AI-labeled)
+  restricted:
+    - youtube                         # 1-2 pillar videos/week MAX, high-quality only
+  forbidden:
+    - linkedin                        # AI personas get detected/banned — protects Anthony's real LinkedIn
 
 # ---- Content Funnel Distribution ----
 funnel:
@@ -61,29 +68,40 @@ funnel:
   bottom_of_funnel: 20                # "Cocreatiq OS automates this" / product demos
 
 # ---- Platform-Specific Rules ----
+# AI influencer — NO LinkedIn (auto-detected), limited YouTube (inauthentic content policy)
 platform_rules:
-  youtube:
-    format: "long_form"
-    min_duration_min: 10
-    max_duration_min: 60
-    thumbnail: "face + framework graphic + result number"
-    posting_frequency: "2x per week"
-  linkedin:
-    format: "posts_and_articles"
-    tone_shift: "same directness, more data, more professional framing"
-    posting_frequency: "1-2x per day"
   twitter:
     format: "threads_and_quotes"
     max_chars: 280
     thread_length: "5-12 tweets"
-    posting_frequency: "3-5x per day"
-  tiktok:
-    format: "short_form"
-    max_duration_sec: 60
-    captions: "always_on"
-    posting_frequency: "1x per day"
+    posting_frequency: "3x per day"
+    hook_style: "framework or stat-led"
+    ai_disclosure: "bio + occasional post mention"
   instagram:
     format: "reels_and_carousels"
     max_duration_sec: 90
     captions: "always_on"
-    posting_frequency: "1x per day"
+    posting_frequency: "3x per day"
+    ai_disclosure: "API flag + 'Made with AI' label auto-set"
+  tiktok:
+    format: "short_form"
+    max_duration_sec: 60
+    captions: "always_on"
+    posting_frequency: "3x per day"
+    ai_disclosure: "is_aigc flag required — handled by publisher"
+  facebook:
+    format: "cross_post_from_ig"
+    posting_frequency: "2x per day"
+    ai_disclosure: "API flag (same token as IG)"
+  youtube:
+    # AI channel — conservative to avoid "inauthentic content" demonetization.
+    long_form:
+      frequency: "1x per week MAX"     # B2B breakdowns, case studies — must be high insight
+      min_duration_min: 5
+      max_duration_min: 15
+    shorts:
+      frequency: "1x per day first 30 days, then 2x per day"
+      max_duration_sec: 60
+      captions: "always_on"
+    ai_disclosure: "containsSyntheticMedia=true on every upload"
+    warning: "Mass-produced/templated content triggers demonetization. Quality > quantity."

@@ -1,51 +1,52 @@
 # Avatar System — Handoff Specs for Other Sessions
 
-> Everything in `avatar/` is built and tested (215/215). These specs tell the
+> Everything in `avatar/` is built and tested (493/493). These specs tell the
 > Main Session and UI Session exactly what to call and what to build.
 
 ---
 
 ## FOR MAIN SESSION (owns: agent.py, brain/, tools.py)
 
-### 1. Voice/TTS Integration (ClipCannon Pattern)
+### 1. Voice/TTS Integration — ALREADY BUILT (avatar/voice/)
 
-**What to build:** A class that implements `VoiceInterface.synthesize(text, voice_config) -> str`
-
-**Interface contract:** See `avatar/voice_spec.py` for full details.
+**What's built:** Dual-engine voice system with cloning, design, and emotion modes.
+Main Session just needs to install dependencies and wire it into LiveKit.
 
 ```python
-from avatar.studio.render_job import VoiceInterface
+# The voice engine is ALREADY BUILT. Main Session uses it like this:
+from avatar.voice import VoiceEngine, VoiceRegistry, VoiceMode, VoiceProfile
 
-class ClipCannonVoice(VoiceInterface):
-    """
-    Recommended stack:
-    - Model: Qwen3-TTS-12Hz-1.7B-Base (HuggingFace)
-    - Mode: Full ICL (reference audio + transcript, NOT x-vector only)
-    - Selection: Best-of-12 with WavLM scoring at temperature 0.3
-    - Enrollment: 50-clip centroid from avatar reference recordings
-    - Quality gates: duration ratio, WER via Whisper, SECS threshold
+# Create voice profile from operator's 2-min video (same video as avatar)
+registry = VoiceRegistry()
+profile = registry.create_from_video("recording.mp4", "genesis")
+# OR design a voice (no real person needed)
+profile = registry.create_designed("support_bot", "warm female, 30s, professional")
 
-    Reference: https://huggingface.co/cabdru/clipcannon-voice-clone
-    """
-    def synthesize(self, text: str, voice_config: dict) -> str:
-        # 1. Load Qwen3-TTS model
-        # 2. Build ICL prompt with reference audio + transcript
-        # 3. Generate N=12 candidates at temperature=0.3
-        # 4. Score each with WavLM (microsoft/wavlm-base-plus-sv)
-        # 5. Select highest scoring candidate
-        # 6. Run quality gates (duration, WER, SECS)
-        # 7. Save as WAV (16kHz mono) and return path
-        return "/path/to/output.wav"
+# Synthesize (auto-routes: Qwen3-TTS for clone/multilingual, Orpheus for emotion)
+engine = VoiceEngine()
+wav_path = engine.synthesize("Hello, welcome!", profile)
+
+# With emotion tags (routes to Orpheus automatically)
+wav_path = engine.synthesize("That's <laugh> amazing!", profile)
+
+# Streaming for live calls (replace OpenAI Realtime "ash")
+async for chunk in engine.synthesize_stream("Hello!", profile):
+    livekit_audio_track.push(chunk)
 ```
 
-**Audio format required:**
-- WAV file, 16kHz mono, 16-bit PCM (preferred)
-- 24kHz or 44.1kHz also accepted (auto-resampled)
-- Min 1 second, max 5 minutes
+**What Main Session needs to do:**
+1. `pip install qwen-tts orpheus-speech` (on Modal A10G or server with GPU)
+2. Replace `openai.realtime.RealtimeModel(voice="ash")` in `operators/champ.py`
+   with `VoiceEngine.synthesize_stream()` routed through LiveKit
+3. That's it — the engine handles routing, scoring, and quality gates
+
+**Audio format produced:**
+- WAV file, 16kHz mono, 16-bit PCM
+- Streaming: int16 PCM chunks at 16kHz
 
 **Where the avatar consumes it:**
-- Real-time: audio flows through LiveKit automatically (no changes)
-- Studio: `RenderJob` calls `voice.synthesize()` then feeds WAV to FlashHead
+- Real-time: audio flows through LiveKit (engine produces stream chunks)
+- Studio: `RenderJob` accepts `VoiceEngine` as its `voice` parameter
 
 ---
 
@@ -261,21 +262,30 @@ Frontend (UI Session)
   /create-avatar     -> POST /api/avatar/create
   /studio            -> POST /api/render
   /dashboard         -> GET /api/avatars, GET /api/renders
+  /live-call         -> gsplat.js + WebRTC DataChannel (Phase 7)
 
 API Layer (Main Session)
   POST /api/avatar/create     -> avatar.training.avatar_registry
+  POST /api/avatar/create-splat -> avatar.splat (Phase 7 — full pipeline)
   POST /api/render            -> avatar.studio.render_job (via Inngest)
   GET  /api/render/:id        -> renders/job_{id}/metadata.json
   GET  /api/avatars           -> avatar.training.avatar_registry
+  GET  /api/avatar/:id/splat  -> serve .ply/.splat file for browser download
   GET  /api/templates         -> avatar.studio.templates
 
-Avatar Engine (Avatar Session — DONE)
+Avatar Engine (Avatar Session — Phases 1-6 DONE, Phase 7 DONE)
   avatar/training/     <- Avatar creation (keyframes, LoRA)
   avatar/studio/       <- Video rendering (script -> MP4)
   avatar/renderer.py   <- Live avatar (real-time WebRTC)
   avatar/gpu_backend.py <- GPU routing (local/Modal)
   avatar/upscale.py    <- 4K output
   avatar/body/         <- Body + gestures
+  avatar/splat/        <- Gaussian Splat pipeline (Phase 7)
+    train_splat.py             <- Video → FLAME-rigged 3DGS
+    motion_driver.py           <- Blendshapes → MotionFrame → DataChannel
+    instant_preview.py         <- Single photo → 3DGS preview in seconds
+    virtual_capture_studio.py  <- 3 photos → 96 synthetic views
+    splat_export.py            <- Export .ply/.splat for browser delivery
 
 Voice Engine (Main Session — TO BUILD)
   ClipCannonVoice      <- Qwen3-TTS + ICL + best-of-N + WavLM
@@ -284,24 +294,205 @@ Voice Engine (Main Session — TO BUILD)
 
 ---
 
+## PHASE 7 HANDOFF — Gaussian Splat Pipeline
+
+### For Main Session: New API Endpoints
+
+**Create splat avatar (full pipeline):**
+```python
+# POST /api/avatar/create-splat
+from avatar.splat import VirtualCaptureStudio, SplatTrainer, InstantPreviewGenerator
+from avatar.splat.motion_driver import SplatMotionDriver
+from avatar.training.avatar_registry import AvatarRegistry
+
+registry = AvatarRegistry()
+
+# Step 1: Instant preview (3 seconds)
+preview = InstantPreviewGenerator()
+preview_path = preview.generate(image_path="selfie.jpg", avatar_id="anthony")
+registry.update_splat_status("anthony", "preview", preview_path=preview_path)
+
+# Step 2: Virtual Capture Studio (background, ~2 min)
+studio = VirtualCaptureStudio()
+capture = studio.capture(photos=["front.jpg", "left.jpg", "right.jpg"], avatar_id="anthony")
+registry.update_splat_status("anthony", "training", synthetic_views_dir=capture.output_dir)
+
+# Step 3: Full training (background via Inngest, 20-60 min)
+trainer = SplatTrainer()
+result = trainer.train(
+    video_path="recording.mp4",
+    avatar_id="anthony",
+    synthetic_views_dir=capture.output_dir,
+)
+registry.update_splat_status(
+    "anthony", "ready",
+    splat_path=result.splat_path,
+    num_gaussians=result.num_gaussians,
+)
+```
+
+**Serve splat for browser download:**
+```python
+# GET /api/avatar/:id/splat
+from avatar.splat import SplatExporter, ExportFormat
+
+exporter = SplatExporter()
+web_path = exporter.export_for_web(
+    splat_path=registry.get_splat_path("anthony"),
+    format=ExportFormat.SPLAT,  # Compressed for web (26 bytes/Gaussian)
+)
+# Serve web_path as binary download with Content-Type: application/octet-stream
+```
+
+**Live call motion via WebRTC DataChannel:**
+```python
+# In LiveKit room handler — replace video track publish with DataChannel
+from avatar.splat.motion_driver import SplatMotionDriver, MotionFrame
+
+driver = SplatMotionDriver()
+driver.load_avatar("anthony")
+
+# Each frame (25fps):
+motion_vec = motion_predictor.predict(audio_features)  # (55,) from avatar/motion.py
+gesture = gesture_predictor.predict(audio_features)     # from avatar/body/
+frame = driver.drive(motion_vec, gesture=gesture)
+datachannel.send(frame.to_bytes())  # 229 bytes per frame = 5.7 KB/s
+```
+
+### For UI Session: gsplat.js Integration
+
+**Browser-side 3DGS rendering:**
+```typescript
+// GaussianSplatAvatar.tsx — new component for live calls
+import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+
+// 1. Load splat file (cached, one-time download ~50-200MB)
+const viewer = new GaussianSplats3D.Viewer({ /* canvas config */ });
+await viewer.loadFile('/api/avatar/anthony/splat');
+
+// 2. Receive motion params via WebRTC DataChannel (229 bytes/frame)
+dataChannel.onmessage = (event) => {
+    const frame = parseMotionFrame(event.data);  // 52 blendshapes + 3 head pose
+    // Apply blendshapes to FLAME mesh → deform Gaussians → re-render
+    applyMotionToSplat(viewer, frame);
+};
+
+// 3. Render at 120+ FPS locally — NO server GPU needed
+```
+
+**Client metadata endpoint:**
+```python
+# GET /api/avatar/:id/splat/meta
+from avatar.splat import SplatExporter
+meta = SplatExporter().get_client_metadata(splat_path)
+# Returns: {num_gaussians, file_size_mb, bbox, center, motion_frame_rate, ...}
+```
+
+---
+
+## PERSONALIVE HANDOFF — Zero-Training Instant Avatar
+
+PersonaLive (CVPR 2026, Apache 2.0) provides a zero-training instant avatar mode.
+User uploads a single selfie → live animated avatar in seconds (no training wait).
+Uses streaming diffusion on server GPU. 2D only, ~10-30 FPS.
+
+### For Main Session: PersonaLive Integration
+
+**Instant avatar (no training, single photo):**
+```python
+# POST /api/avatar/personalive/start
+from avatar.splat import PersonaLiveRenderer, PersonaLiveConfig
+
+renderer = PersonaLiveRenderer()
+renderer.initialize("selfie.jpg")  # Identity encoded in ~2 seconds
+
+# In live call loop — two options:
+# Option A: Webcam-driven (client sends webcam frames)
+output_frame = renderer.process_frame(webcam_frame)  # 512x512 RGBA
+
+# Option B: Audio-driven (bridge from our MotionPredictor)
+from avatar.motion import MotionPredictor
+motion_vec = motion_predictor.predict(audio_features)
+blendshapes = motion_vec[:52]
+head_pose = motion_vec[52:]
+driving_frame = renderer.generate_driving_from_blendshapes(blendshapes, head_pose)
+output_frame = renderer.process_frame(driving_frame)
+
+# Send output_frame via WebRTC video track (NOT DataChannel — this is 2D video)
+```
+
+**Lifecycle:**
+```
+User uploads selfie
+  → PersonaLive starts instantly (zero training)
+  → Meanwhile: VirtualCaptureStudio + SplatTrainer runs in background
+  → When 3DGS training completes: auto-switch to GAUSSIAN_SPLAT mode
+  → User gets holographic 3D avatar, no server GPU needed for live calls
+```
+
+### For UI Session: Mode Switching
+
+```typescript
+// Avatar modes — show appropriate renderer
+if (avatar.splat_status === "ready") {
+    // Best: 3D Gaussian Splat (client-rendered, 120+ FPS, any angle)
+    <GaussianSplatAvatar splatUrl={avatar.splat_url} />
+} else {
+    // Fallback: PersonaLive (server-rendered, 10-30 FPS, front-facing)
+    <VideoStream src={personalive_webrtc_track} />
+}
+```
+
+---
+
+## RENDER MODES COMPARISON
+
+| Mode | Training | Server GPU | Camera Angles | FPS | Best For |
+|---|---|---|---|---|---|
+| `PERSONALIVE` | None (instant) | Yes (per session) | Fixed front | 10-30 | Try before you train |
+| `GAUSSIAN_SPLAT` | 20-60 min | No (client renders) | Any angle | 120+ | Live calls at scale |
+| `FLASHHEAD_FULL` | LoRA optional | Yes (per render) | Fixed front | N/A (async) | Pre-rendered MP4 |
+| `PLACEHOLDER` | None | None | Fixed front | 25 | Dev/testing |
+
+---
+
 ## QUICK START FOR EACH SESSION
 
 **Main Session:**
 ```python
-# 1. Import what you need
+# Phase 1-6 (async video):
 from avatar.training.avatar_registry import AvatarRegistry
 from avatar.studio.render_job import RenderJob, VoiceInterface
 from avatar.studio.templates import get_template, list_templates
 
-# 2. Implement VoiceInterface
-# 3. Create API routes calling the above
-# 4. Wrap renders in Inngest for async
+# Phase 7 (Gaussian Splat):
+from avatar.splat import (
+    SplatTrainer, InstantPreviewGenerator,
+    VirtualCaptureStudio, SplatExporter, ExportFormat,
+)
+from avatar.splat.motion_driver import SplatMotionDriver, MotionFrame
+
+# Phase 7 (PersonaLive — zero-training):
+from avatar.splat import PersonaLiveRenderer, PersonaLiveConfig
+
+# 1. Implement VoiceInterface (ClipCannon + Qwen3-TTS)
+# 2. Create API routes (see endpoints above)
+# 3. Wrap training in Inngest for async
+# 4. Replace video track with DataChannel for 3DGS live calls
+# 5. Add PersonaLive as instant fallback during training
 ```
 
 **UI Session:**
 ```
-1. Build /create-avatar page (video upload + progress)
-2. Build /studio page (script editor + template picker + render)
-3. Build /dashboard (avatar gallery + recent renders)
-4. All backend calls are REST — see endpoints above
+Phase 1-6:
+  1. Build /create-avatar page (video upload + progress)
+  2. Build /studio page (script editor + template picker + render)
+  3. Build /dashboard (avatar gallery + recent renders)
+
+Phase 7 (new):
+  4. Build GaussianSplatAvatar.tsx — gsplat.js renderer component
+  5. Build useSplatMotion.ts — DataChannel motion receiver hook
+  6. Add splat status indicators to avatar creation flow
+  7. Add PersonaLive ↔ GaussianSplat mode auto-switching
+  8. All backend calls are REST — see endpoints above
 ```

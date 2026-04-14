@@ -81,6 +81,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---- Avatar API Routes (Phase 7) ----
+from brain.avatar_routes import router as avatar_router
+app.include_router(avatar_router)
+
 
 # ---- Health Check ----
 @app.get("/health")
@@ -91,29 +95,134 @@ async def health():
 # ---- Session Lifecycle ----
 @app.post("/v1/session/start")
 async def session_start(request: Request):
-    """Start a new conversation session. Returns conversation_id."""
+    """Start a new conversation session. Returns conversation_id.
+    Captures frozen memory snapshot (Hermes Pattern #1)."""
     pipeline: BrainPipeline = request.app.state.pipeline
     body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
     channel = body.get("channel", "voice")
+    user_id = body.get("user_id", settings.default_user)
     conversation_id = await pipeline.memory.start_session(channel=channel)
+
+    # Capture frozen memory snapshot for this session
+    if conversation_id:
+        try:
+            await pipeline.capture_snapshot(conversation_id, user_id)
+            logger.info(f"[SESSION] Snapshot captured for {conversation_id}")
+        except Exception as e:
+            logger.error(f"[SESSION] Snapshot capture failed (non-fatal): {e}")
+
     return {"conversation_id": conversation_id}
 
 
 @app.post("/v1/session/end")
 async def session_end(request: Request):
-    """End a conversation session. Triggers learning extraction."""
+    """End a conversation session. Triggers learning extraction and transcript persistence."""
     pipeline: BrainPipeline = request.app.state.pipeline
     learning: LearningLoop = request.app.state.learning
     body = await request.json()
     conversation_id = body.get("conversation_id")
+    transcript_id = None
+
     if conversation_id:
         # Run learning extraction before ending session
         try:
             await learning.capture(conversation_id, pipeline.memory)
         except Exception as e:
             logger.error(f"Learning capture failed (non-fatal): {e}")
+
+        # Skill extraction (Hermes Pattern #4)
+        try:
+            tl_for_skills = pipeline.get_transcript_logger(conversation_id)
+            if tl_for_skills:
+                operator_name = body.get("operator_name", "champ")
+                transcript_text = tl_for_skills.get_full_text()
+                await pipeline.skill_engine.extract(
+                    operator_name=operator_name,
+                    transcript=transcript_text,
+                )
+        except Exception as e:
+            logger.error(f"Skill extraction failed (non-fatal): {e}")
+
+        # Persist transcript to Supabase
+        try:
+            tl = pipeline.close_transcript_logger(conversation_id)
+            if tl:
+                stats = tl.get_stats()
+                transcript_id = await pipeline.memory.persist_transcript(
+                    session_id=conversation_id,
+                    transcript_text=tl.get_full_text(),
+                    transcript_json=tl.get_structured_transcript(),
+                    stats=stats,
+                    audio_url=body.get("audio_url"),
+                )
+                logger.info(
+                    f"[SESSION END] Transcript persisted: {transcript_id} | "
+                    f"{stats['message_count']} entries, {stats['duration_seconds']}s"
+                )
+
+                # Index session for FTS5 search (Hermes Pattern #5)
+                try:
+                    messages = tl.get_structured_transcript()
+                    pipeline.session_search.index_session(
+                        session_id=conversation_id,
+                        messages=messages,
+                        operator_name=body.get("operator_name", "champ"),
+                        user_id=body.get("user_id", settings.default_user),
+                    )
+                except Exception as e:
+                    logger.error(f"Session indexing failed (non-fatal): {e}")
+            else:
+                logger.info(f"[SESSION END] No transcript logger for {conversation_id}")
+        except Exception as e:
+            logger.error(f"Transcript persistence failed (non-fatal): {e}")
+
+        # Release session-scoped resources (snapshot, prefetch cache, compressor state)
+        pipeline.release_session(conversation_id)
+
         await pipeline.memory.end_session(conversation_id)
-    return {"status": "ok"}
+
+    return {"status": "ok", "transcript_id": transcript_id}
+
+
+# ---- Transcript Persist (called by agent.py on disconnect) ----
+@app.post("/v1/transcript/persist")
+async def transcript_persist(request: Request):
+    """Persist a transcript sent from the voice agent on session disconnect."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    body = await request.json()
+    session_id = body.get("session_id")
+    transcript_text = body.get("transcript_text", "")
+    transcript_json = body.get("transcript_json", [])
+    stats = body.get("stats", {})
+    audio_url = body.get("audio_url")
+
+    if not session_id:
+        return {"error": "session_id required"}
+
+    # Extract additional fields from request
+    operator_name = body.get("operator_name")
+    tools_used = body.get("tools_used")
+
+    try:
+        transcript_id = await pipeline.memory.persist_transcript(
+            session_id=session_id,
+            transcript_text=transcript_text,
+            transcript_json=transcript_json,
+            stats=stats,
+            audio_url=audio_url,
+            operator_name=operator_name,
+            tools_used=tools_used,
+        )
+        logger.info(
+            f"[TRANSCRIPT] Persisted from agent: {transcript_id} | "
+            f"{stats.get('message_count', 0)} entries, "
+            f"{stats.get('duration_seconds', 0)}s | "
+            f"operator={operator_name}"
+        )
+        return {"status": "ok", "transcript_id": transcript_id}
+    except Exception as e:
+        logger.error(f"[TRANSCRIPT] Persist failed: {e}")
+        return {"error": str(e)}
 
 
 # ---- Chat Completions (OpenAI-compatible) ----
@@ -628,6 +737,95 @@ async def get_conversation_messages(
     except Exception as e:
         logger.error(f"[MEMORY] Messages fetch failed: {e}")
         return {"messages": [], "count": 0, "error": str(e)}
+
+
+# ---- Session Search (Hermes Pattern #5 — FTS5) ----
+
+@app.get("/v1/search/sessions")
+async def search_sessions(request: Request, q: str = "", operator: str = ""):
+    """
+    Full-text search across past sessions.
+    Returns ranked results with LLM summarization.
+
+    Query params:
+    - q: search query (required)
+    - operator: filter by operator name (optional)
+    """
+    pipeline: BrainPipeline = request.app.state.pipeline
+
+    if not q.strip():
+        return {"error": "Query parameter 'q' is required", "results": []}
+
+    # Raw FTS5 results
+    raw_results = pipeline.session_search.search(q, operator_name=operator)
+
+    # Summarized results (with LLM)
+    summary = await pipeline.session_search.search_with_summary(
+        q, operator_name=operator
+    )
+
+    stats = pipeline.session_search.get_stats()
+
+    return {
+        "query": q,
+        "results": raw_results[:10],
+        "summary": summary,
+        "index_stats": stats,
+    }
+
+
+# ---- Skills (Hermes Pattern #4) ----
+
+@app.get("/v1/skills")
+async def list_skills(request: Request, operator: str = ""):
+    """List all skills, optionally filtered by operator."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.skill_engine._client:
+        return {"skills": [], "count": 0}
+
+    try:
+        query = pipeline.skill_engine._client.table("operator_skills").select("*")
+        if operator:
+            query = query.eq("operator_name", operator)
+        result = await query.order("created_at", desc=True).execute()
+        skills = result.data or []
+        return {"skills": skills, "count": len(skills)}
+    except Exception as e:
+        logger.error(f"[SKILLS] List failed: {e}")
+        return {"skills": [], "count": 0, "error": str(e)}
+
+
+@app.get("/v1/skills/{skill_id}")
+async def get_skill(skill_id: str, request: Request):
+    """Get a single skill by ID."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    if not pipeline.skill_engine._client:
+        return JSONResponse(status_code=404, content={"error": "Skills not available"})
+
+    try:
+        result = await pipeline.skill_engine._client.table(
+            "operator_skills"
+        ).select("*").eq("id", skill_id).execute()
+        if result.data:
+            return result.data[0]
+        return JSONResponse(status_code=404, content={"error": "Skill not found"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ---- User Modeling (Hermes Pattern #3) ----
+
+@app.get("/v1/memory/user_model")
+async def get_user_model(request: Request, user_id: str = "anthony"):
+    """Get the dual-peer user model representations."""
+    pipeline: BrainPipeline = request.app.state.pipeline
+    user_repr = await pipeline.user_modeling.get_user_representation(user_id)
+    ai_repr = await pipeline.user_modeling.get_ai_representation(user_id)
+    return {
+        "user_id": user_id,
+        "user_representation": user_repr,
+        "ai_representation": ai_repr,
+    }
 
 
 # ---- Models endpoint (satisfies OpenAI client) ----

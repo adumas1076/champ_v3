@@ -38,6 +38,12 @@ class AvatarMetadata:
     created_at: str               # ISO timestamp
     reference_image: str          # Path to best single reference frame
     frames_dir: Optional[str]     # Path to keyframes directory (None if single image)
+    # Phase 7: Gaussian Splat fields
+    splat_path: Optional[str] = None         # Path to .ply splat file
+    splat_preview_path: Optional[str] = None # Path to instant preview .ply
+    splat_status: str = "none"               # "none", "preview", "training", "ready"
+    num_gaussians: int = 0                   # Total Gaussians in splat model
+    synthetic_views_dir: Optional[str] = None  # Virtual Capture Studio output
 
 
 class AvatarRegistry:
@@ -166,6 +172,54 @@ class AvatarRegistry:
 
         logger.info(f"Avatar '{avatar_id}' created from image: {image_path}")
         return meta
+
+    def update_splat_status(
+        self,
+        avatar_id: str,
+        status: str,
+        splat_path: Optional[str] = None,
+        preview_path: Optional[str] = None,
+        num_gaussians: int = 0,
+        synthetic_views_dir: Optional[str] = None,
+    ) -> Optional[AvatarMetadata]:
+        """
+        Update the Gaussian Splat status for an avatar.
+
+        Status progression: none → preview → training → ready
+        """
+        meta = self._load_metadata(avatar_id)
+        if meta is None:
+            logger.warning(f"Avatar '{avatar_id}' not found for splat update")
+            return None
+
+        meta.splat_status = status
+        if splat_path:
+            meta.splat_path = splat_path
+        if preview_path:
+            meta.splat_preview_path = preview_path
+        if num_gaussians:
+            meta.num_gaussians = num_gaussians
+        if synthetic_views_dir:
+            meta.synthetic_views_dir = synthetic_views_dir
+
+        self._save_metadata(meta)
+        logger.info(f"Avatar '{avatar_id}' splat status → {status}")
+        return meta
+
+    def get_splat_path(self, avatar_id: str) -> Optional[str]:
+        """
+        Get the best available splat path for an avatar.
+        Returns production splat if ready, preview if training, None if unavailable.
+        """
+        meta = self._load_metadata(avatar_id)
+        if meta is None:
+            return None
+
+        if meta.splat_status == "ready" and meta.splat_path:
+            return meta.splat_path
+        elif meta.splat_status in ("preview", "training") and meta.splat_preview_path:
+            return meta.splat_preview_path
+        return None
 
     def delete_avatar(self, avatar_id: str) -> bool:
         """Delete an avatar and all its data."""

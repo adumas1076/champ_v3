@@ -18,7 +18,7 @@ voice:
 
 # ---- THINK: Persona / Instructions ----
 # Can be inline or loaded from a file:
-persona_file: persona/champ_core.md
+persona_file: persona/compiled/champ_prompt.md
 
 # ---- ACT: Tool Permissions ----
 # null = ALL OS tools (full access)
@@ -31,6 +31,23 @@ channels:
   text: true
   video: true               # Webcam / screen share input
   screen_share: true
+
+# ---- CONVERSATION DNA DIALS ----
+# Override defaults from conversation_matrix/01_conversation_dna.md
+# Only list laws that differ from default. Unlisted = default.
+conversation_dna:
+  law_03_emotion_before_analysis: 8
+  law_08_cultural_shorthand: 8
+  law_12_expert_street_clothes: 8
+  law_13_stack_stories: 7
+  law_15_the_callback: 8
+  law_18_comfort_with_chaos: 7
+  law_20_group_is_the_brain: 7
+  law_22_roasting_is_love: 7
+  law_24_competitive_energy: 7
+  law_25_wont_let_it_go: 7
+  law_26_energy_shift: 8
+  law_27_conversation_pulse: 7
 
 # ---- Boundaries ----
 # What this operator will NOT do.

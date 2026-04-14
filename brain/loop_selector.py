@@ -61,7 +61,7 @@ AUTONOMOUS_TRIGGERS = [
 
 # Handoff: route to another operator
 HANDOFF_TRIGGERS = [
-    r"\b(get|ask|call|connect|transfer|hand off|switch to)\b.{0,20}\b(billy|genesis|sadie|another|other)\b",
+    r"\b(get|ask|call|connect|transfer|hand off|switch to)\b.{0,20}\b(billy|genesis|sadie|sales|marketing|operations|retention|onboarding|lead.?gen|research|content|growth|support|billing|another|other)\b",
     r"\bdelegate\b",
     r"\bhand (this|it) off\b",
     r"\blet .{0,15} handle\b",
@@ -82,6 +82,7 @@ VERIFY_TRIGGERS = [
 ACTION_TRIGGERS = [
     r"\b(open|launch|start|run|close|quit)\b.{0,20}\b(app|chrome|spotify|excel|code|terminal|browser)",
     r"\b(go to|visit|browse|navigate|check)\b.{0,20}\b(website|page|site|url|http)",
+    r"\b(go to|visit|browse|navigate|check)\b.{0,30}\.(com|io|ai|co|org|net)\b",
     r"\bgoogle\b",
     r"\bsearch (for|up)\b",
     r"\btake a screenshot\b",

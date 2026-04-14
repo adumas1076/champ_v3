@@ -45,3 +45,9 @@ reference/
 Thumbs.db
 nul
 frontend/dist/
+
+# Large model files (use LFS or external storage)
+models/avatars/*/tracked_flame_params_*.npz
+models/flame/FLAME2023/*.pkl
+models/openface/
+*.zip

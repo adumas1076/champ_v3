@@ -1,0 +1,418 @@
+# ============================================
+# Topic Bank — V1 Seed
+# 50 initial topics for the Strategist to pull from.
+# Organized by KPI stage (know/like/trust/convert) and theme.
+# Autoresearch will score which topics work → promote winners.
+# ============================================
+
+topics:
+  # ==================== KNOW (40%) — Framework/insight content ====================
+  - id: k_001
+    kpi_stage: know
+    funnel_stage: cold
+    theme: ai_operators
+    topic: "Why 'AI agents' and 'AI operators' are not the same thing"
+    hook_style: contrarian
+    faces: [anthony, influencer_1, influencer_2]
+
+  - id: k_002
+    kpi_stage: know
+    funnel_stage: cold
+    theme: content_systems
+    topic: "The 5-pillar content system that separates $0/mo creators from $200K/mo operators"
+    hook_style: stat
+    faces: [anthony, influencer_1]
+
+  - id: k_003
+    kpi_stage: know
+    funnel_stage: cold
+    theme: cortex_routing
+    topic: "Cortex Routing: why your AI stack should use 4 models, not 1"
+    hook_style: pattern_interrupt
+    faces: [anthony, influencer_1]
+
+  - id: k_004
+    kpi_stage: know
+    funnel_stage: cold
+    theme: business_math
+    topic: "LTV:CAC — the one number that predicts if your business scales"
+    hook_style: framework
+    faces: [anthony, influencer_2]
+
+  - id: k_005
+    kpi_stage: know
+    funnel_stage: cold
+    theme: marketing
+    topic: "Priestley's Over-Subscribed: why you sell signals before you sell anything else"
+    hook_style: concept
+    faces: [anthony, influencer_2]
+
+  - id: k_006
+    kpi_stage: know
+    funnel_stage: cold
+    theme: click_to_client
+    topic: "The Click to Client framework: 10 steps every business needs"
+    hook_style: framework
+    faces: [anthony, influencer_2, influencer_3]
+
+  - id: k_007
+    kpi_stage: know
+    funnel_stage: cold
+    theme: ai_development
+    topic: "Dr. Frankenstein method: why building from scratch is a trap"
+    hook_style: contrarian
+    faces: [anthony, influencer_1]
+
+  - id: k_008
+    kpi_stage: know
+    funnel_stage: cold
+    theme: hooks
+    topic: "Hook, Retain, Reward — Hormozi's content formula in 60 seconds"
+    hook_style: framework
+    faces: [anthony, influencer_3]
+
+  - id: k_009
+    kpi_stage: know
+    funnel_stage: cold
+    theme: autonomy
+    topic: "SAR — Secure, Autonomous, Reliable — the only 3 principles for AI systems"
+    hook_style: framework
+    faces: [anthony, influencer_1]
+
+  - id: k_010
+    kpi_stage: know
+    funnel_stage: cold
+    theme: operators
+    topic: "Why the future isn't 'hire virtual assistants' — it's operate autonomous operators"
+    hook_style: contrarian
+    faces: [anthony]
+
+  # ==================== LIKE (30%) — Personality/BTS content ====================
+  - id: l_001
+    kpi_stage: like
+    funnel_stage: warm
+    theme: build_in_public
+    topic: "Building CHAMP V3 live: today's decision — why I killed HeyGen for custom avatars"
+    hook_style: behind_scenes
+    faces: [anthony]
+
+  - id: l_002
+    kpi_stage: like
+    funnel_stage: warm
+    theme: build_in_public
+    topic: "800 sessions with Claude. 59K chats. Here's what actually moved the needle"
+    hook_style: stat
+    faces: [anthony]
+
+  - id: l_003
+    kpi_stage: like
+    funnel_stage: warm
+    theme: mistakes
+    topic: "I spent $42 on a single Modal deploy. Here's what I learned"
+    hook_style: mistake_confession
+    faces: [anthony]
+
+  - id: l_004
+    kpi_stage: like
+    funnel_stage: warm
+    theme: tools_daily
+    topic: "My daily tool stack (Claude Code + LiveKit + Modal + Nango + Supabase)"
+    hook_style: stack
+    faces: [anthony, influencer_1]
+
+  - id: l_005
+    kpi_stage: like
+    funnel_stage: warm
+    theme: working_style
+    topic: "Why I run 2 Claude sessions in parallel (and how you can)"
+    hook_style: system
+    faces: [anthony, influencer_1]
+
+  - id: l_006
+    kpi_stage: like
+    funnel_stage: warm
+    theme: creative_journey
+    topic: "20 years as a creative generalist. Adidas, Telemundo, Alpha Wolf. Now AI."
+    hook_style: story
+    faces: [anthony, influencer_3]
+
+  - id: l_007
+    kpi_stage: like
+    funnel_stage: warm
+    theme: philosophy
+    topic: "de Bono, Meadows, Dalio — the 3 thinkers who shaped how I build"
+    hook_style: influence
+    faces: [anthony]
+
+  - id: l_008
+    kpi_stage: like
+    funnel_stage: warm
+    theme: origin
+    topic: "How a failed agency became Cocreatiq OS"
+    hook_style: origin_story
+    faces: [anthony]
+
+  - id: l_009
+    kpi_stage: like
+    funnel_stage: warm
+    theme: client_zero
+    topic: "Why I'm my own first customer — and why every founder should be"
+    hook_style: philosophy
+    faces: [anthony, influencer_2]
+
+  - id: l_010
+    kpi_stage: like
+    funnel_stage: warm
+    theme: tools_opinion
+    topic: "Tools I paid for this month that weren't worth it (and what replaced them)"
+    hook_style: opinion
+    faces: [anthony, influencer_1]
+
+  - id: l_011
+    kpi_stage: like
+    funnel_stage: warm
+    theme: daily_ops
+    topic: "A day in the life of running a business through 9 AI operators"
+    hook_style: day_in_life
+    faces: [anthony]
+
+  - id: l_012
+    kpi_stage: like
+    funnel_stage: warm
+    theme: failures
+    topic: "3 things I tried that completely failed (and what I ship now instead)"
+    hook_style: failure_list
+    faces: [anthony, influencer_1]
+
+  - id: l_013
+    kpi_stage: like
+    funnel_stage: warm
+    theme: team
+    topic: "My 9-person AI team — what each operator handles so I don't have to"
+    hook_style: system
+    faces: [anthony, influencer_2]
+
+  # ==================== TRUST (20%) — Proof/receipts content ====================
+  - id: t_001
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: skipper_case_study
+    topic: "Skipper case study: 1 AI operator at 50% capacity drove 300%+ revenue. Stripe data here."
+    hook_style: receipts
+    faces: [anthony]
+
+  - id: t_002
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: skipper_case_study
+    topic: "The exact workflow that took Skipper from X to Y — step by step"
+    hook_style: case_study
+    faces: [anthony]
+
+  - id: t_003
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: metrics
+    topic: "How we score every piece of content on 5 signals — here's our dashboard"
+    hook_style: transparency
+    faces: [anthony, influencer_1]
+
+  - id: t_004
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: autoresearch
+    topic: "The Autoresearch Loop in action: what we proved about hooks this week"
+    hook_style: data_reveal
+    faces: [anthony, influencer_1]
+
+  - id: t_005
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: cocreatiq_infra
+    topic: "What it actually takes to run 4 AI influencers autonomously — the full stack"
+    hook_style: stack
+    faces: [anthony, influencer_1]
+
+  - id: t_006
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: proof
+    topic: "Before/after: before Cocreatiq it took me 3 days. After, 12 minutes."
+    hook_style: comparison
+    faces: [anthony, influencer_2]
+
+  - id: t_007
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: transparency
+    topic: "What broke when I ran the Marketing Machine for the first time (and how we fixed it)"
+    hook_style: vulnerability
+    faces: [anthony]
+
+  - id: t_008
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: proof
+    topic: "Content scoring: VIRAL vs HIT vs MISS. Here are 10 examples with real numbers"
+    hook_style: data_reveal
+    faces: [anthony, influencer_3]
+
+  - id: t_009
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: comparison
+    topic: "Cocreatiq OS vs HeyGen vs Manus — what each actually does, honest breakdown"
+    hook_style: comparison
+    faces: [anthony, influencer_1]
+
+  - id: t_010
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: bernie_skipper
+    topic: "Bernie from Skipper: the founder behind the 300% Stripe screenshots"
+    hook_style: testimonial
+    faces: [anthony]
+
+  # ==================== CONVERT (10%) — Direct CTA content ====================
+  - id: c_001
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: cta_assessment
+    topic: "Take the AI Readiness Assessment — 3 minutes, get your score"
+    hook_style: direct_cta
+    faces: [anthony]
+    cta_keyword: OPERATOR
+
+  - id: c_002
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: cta_waitlist
+    topic: "Cocreatiq OS waitlist is open. Founding member pricing locked for first 100."
+    hook_style: scarcity
+    faces: [anthony]
+    cta_keyword: OPERATOR
+
+  - id: c_003
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: cta_assessment_scale
+    topic: "Business Ready to Scale? 25 questions, honest diagnostic"
+    hook_style: direct_cta
+    faces: [influencer_2]
+    cta_keyword: SCALE
+
+  - id: c_004
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: cta_assessment_brand
+    topic: "Does your brand actually convert? Take the audit"
+    hook_style: direct_cta
+    faces: [influencer_3]
+    cta_keyword: BRAND
+
+  - id: c_005
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: cta_assessment_stack
+    topic: "AI stack right or wrong? 15 questions to find out"
+    hook_style: direct_cta
+    faces: [influencer_1]
+    cta_keyword: BUILD
+
+  - id: c_006
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: cta_dm
+    topic: "DM me 'OPERATOR' and I'll send you the Cocreatiq teardown"
+    hook_style: dm_trigger
+    faces: [anthony]
+    cta_keyword: OPERATOR
+
+  - id: c_007
+    kpi_stage: convert
+    funnel_stage: buyer
+    theme: social_proof_cta
+    topic: "847 people took the AI Readiness Assessment this month. Top 10% scored above 85%."
+    hook_style: social_proof
+    faces: [anthony]
+    cta_keyword: OPERATOR
+
+  # ==================== MIXED / REACTIVE SLOTS ====================
+  - id: r_001
+    kpi_stage: know
+    funnel_stage: cold
+    theme: reactive
+    topic: "[TRENDING TOPIC] — here's what actually matters about it"
+    hook_style: reactive
+    faces: [anthony, influencer_1]
+    is_template: true
+
+  - id: r_002
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: reactive_case
+    topic: "Everyone's talking about [X]. Here's what happened when I tried it on my business."
+    hook_style: reactive_case
+    faces: [anthony]
+    is_template: true
+
+  - id: r_003
+    kpi_stage: like
+    funnel_stage: warm
+    theme: reactive_opinion
+    topic: "Controversial take on [TRENDING]: [my perspective]"
+    hook_style: hot_take
+    faces: [anthony, influencer_1]
+    is_template: true
+
+  # ==================== PILLAR CONTENT HOOKS ====================
+  - id: p_001
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: long_form
+    topic: "The complete Marketing Machine architecture — 30 min walkthrough"
+    hook_style: long_form_framework
+    faces: [anthony]
+    content_tier: video
+    platforms_override: [youtube]
+
+  - id: p_002
+    kpi_stage: like
+    funnel_stage: warm
+    theme: long_form
+    topic: "Building 4 AI influencers in 3 days — full build video"
+    hook_style: long_form_buildlog
+    faces: [anthony]
+    content_tier: video
+    platforms_override: [youtube]
+
+  - id: p_003
+    kpi_stage: trust
+    funnel_stage: hot
+    theme: long_form
+    topic: "Interview: Bernie on using 1 AI operator to scale 300% (Skipper founder)"
+    hook_style: long_form_interview
+    faces: [anthony]
+    content_tier: video
+    platforms_override: [youtube]
+
+  - id: p_004
+    kpi_stage: know
+    funnel_stage: cold
+    theme: long_form
+    topic: "The 9 operators every business needs (and what each one does)"
+    hook_style: long_form_framework
+    faces: [anthony, influencer_2]
+    content_tier: video
+    platforms_override: [youtube]
+
+# ============================================
+# Topic Pool Math (V1 launch — 4 faces × 4 platforms × 3 posts/day = 48/day)
+# KNOW: 40% = ~19 posts/day — need ~15 topics/day for variety (have 10 + reactive)
+# LIKE: 30% = ~14 posts/day — need ~10 topics/day (have 13 + reactive)
+# TRUST: 20% = ~10 posts/day — need ~7 topics/day (have 10 + reactive)
+# CONVERT: 10% = ~5 posts/day — need ~3 topics/day (have 7)
+#
+# Total: 43 evergreen topics + 3 reactive templates + 4 pillar long-form
+# After 1 week, autoresearch will promote winners and we seed more from proven patterns.
+# ============================================

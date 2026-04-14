@@ -1,5 +1,5 @@
 """
-AIOSCP core types — data classes for the five primitives.
+AIOSCP core types — data classes for the six primitives.
 """
 
 from __future__ import annotations
@@ -36,6 +36,10 @@ class MessageType(str, Enum):
     INFORM = "inform"
     ERROR = "error"
     ALERT = "alert"
+    HANDOFF = "handoff"                      # Transfer task ownership to another operator
+    ESCALATION = "escalation"                # Escalate to human or higher-trust operator
+    APPROVAL_REQUEST = "approval_request"    # Need human/operator approval before proceeding
+    APPROVAL_RESPONSE = "approval_response"  # Approve/deny with optional feedback
 
 
 class ContextScope(str, Enum):
@@ -76,6 +80,10 @@ class CapabilityMeta:
     requires_approval: bool = False
     idempotent: bool = True
     side_effects: list[str] = field(default_factory=list)
+    # Safety flags — fail-closed defaults (from Claude Code patterns)
+    concurrency_safe: bool = False    # Can run in parallel with other capabilities?
+    destructive: bool = False         # Deletes, overwrites, or sends externally?
+    read_only: bool = False           # Pure observation, no state change?
 
 
 @dataclass
@@ -122,6 +130,10 @@ class Task:
     progress: float = 0.0
     cost_so_far: str = "$0.00"
     tokens_used: int = 0
+    # Dependency graph — which tasks block/are blocked by this one
+    blocks: list[str] = field(default_factory=list)        # Task IDs this task blocks
+    blocked_by: list[str] = field(default_factory=list)    # Task IDs blocking this task
+    requires_verification: bool = False                     # Must pass QA before marking complete
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +149,7 @@ class Message:
     correlation_id: Optional[str] = None
     body: Any = None
     expires_ms: Optional[int] = None
+    resume_on_delivery: bool = False  # If recipient is stopped, restart it to deliver
 
 
 # ---------------------------------------------------------------------------

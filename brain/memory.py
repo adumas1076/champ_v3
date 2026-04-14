@@ -364,6 +364,59 @@ class SupabaseMemory:
         except Exception as e:
             logger.error(f"Healing insert failed: {e}")
 
+    # ---- Transcript Storage (Consolidated — writes directly to conversations) ----
+
+    async def persist_transcript(
+        self,
+        session_id: str,
+        transcript_text: str,
+        transcript_json: list[dict],
+        stats: dict,
+        audio_url: Optional[str] = None,
+        operator_name: Optional[str] = None,
+        tools_used: Optional[list] = None,
+    ) -> Optional[str]:
+        """
+        Persist transcript data directly into the conversations row.
+        One table, one row, full picture — same as Genesis pattern.
+
+        Returns the session_id on success, None on failure.
+        """
+        if not self._client or not session_id:
+            return None
+
+        try:
+            update = {
+                "transcript_text": transcript_text,
+                "transcript_json": transcript_json,
+                "message_count": stats.get("message_count", 0),
+                "user_message_count": stats.get("user_message_count", 0),
+                "agent_message_count": stats.get("agent_message_count", 0),
+                "tool_call_count": stats.get("tool_call_count", 0),
+                "duration_seconds": stats.get("duration_seconds", 0),
+            }
+            if audio_url:
+                update["audio_url"] = audio_url
+            if operator_name:
+                update["operator_name"] = operator_name
+            if tools_used is not None:
+                update["tools_used"] = tools_used
+
+            await self._client.table("conversations").update(
+                update
+            ).eq("id", session_id).execute()
+
+            logger.info(
+                f"Transcript persisted to conversations: {session_id} | "
+                f"{stats.get('message_count', 0)} entries, "
+                f"{stats.get('duration_seconds', 0)}s | "
+                f"operator={operator_name}"
+            )
+            return session_id
+        except Exception as e:
+            logger.error(f"Failed to persist transcript: {e}")
+            return None
+
     # ---- Self Mode (Brick 8) ----
 
     async def upsert_self_mode_run(

@@ -26,6 +26,15 @@ from content_engine.eval import (
     ALL_CRITERIA,
     build_eval_prompt,
 )
+from content_engine.scoring import (
+    score_content_multi_signal,
+    ContentScore,
+    Benchmark,
+    compute_channel_benchmarks,
+    compute_top_10_benchmark,
+    score_to_dict,
+    score_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +62,24 @@ class ContentPerformance:
     engagement_rate: float = 0.0
     retention_level: str = ""    # drop_off | early_plateau | even_scale
     avg_view_percentage: float = 0.0
+    # Multi-signal scoring (from scoring.py)
+    hook_raw: float = 0.0
+    retention_raw: float = 0.0
+    engagement_raw: float = 0.0
+    conversion_raw: float = 0.0
+    outlier_raw: float = 0.0
+    multi_signal_score: float = 0.0       # 0-10 composite
+    multi_signal_verdict: str = ""        # viral | hit | solid | weak | miss
+    multi_signal_detail: Optional[dict] = None  # Full ContentScore as dict
+    # Extended metrics for signal computation
+    saves: int = 0
+    cta_clicks: int = 0
+    link_clicks: int = 0
+    profile_visits: int = 0
+    completion_rate: float = 0.0
+    total_duration: float = 0.0
+    avg_view_duration: float = 0.0
+    channel_avg_views: float = 0.0
     # Correlation
     performance_tier: str = ""   # top | average | below_average | poor
     published_at: str = ""
@@ -322,12 +349,43 @@ async def _pull_platform_posts(platform: str, data: dict, influencer_id: str) ->
         if perf.impressions > 0:
             perf.engagement_rate = (perf.likes + perf.comments + perf.shares) / perf.impressions * 100
 
-        # YouTube-specific: retention data
+        # Extended metrics for multi-signal scoring
+        perf.saves = post.get("saves", 0) or post.get("save_count", 0) or 0
+        perf.cta_clicks = post.get("cta_clicks", 0) or 0
+        perf.link_clicks = post.get("link_clicks", 0) or post.get("clicks", 0) or 0
+        perf.profile_visits = post.get("profile_visits", 0) or 0
+        perf.total_duration = float(duration) if duration else 0.0
+
+        # YouTube-specific: retention data + analytics
         if platform == "youtube":
             retention = post.get("retention") or {}
             perf.retention_level = retention.get("retention_level", "")
             analytics = post.get("analytics") or {}
             perf.avg_view_percentage = analytics.get("averageViewPercentage", 0)
+            perf.avg_view_duration = analytics.get("averageViewDuration", 0)
+            stats = post.get("stats") or {}
+            # Parse duration for total_duration (ISO 8601 → seconds)
+            raw_duration = stats.get("duration", "")
+            if raw_duration and raw_duration.startswith("PT"):
+                try:
+                    import re
+                    match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", raw_duration)
+                    if match:
+                        h, m, s = (int(g) if g else 0 for g in match.groups())
+                        perf.total_duration = h * 3600 + m * 60 + s
+                except Exception:
+                    pass
+
+        # Instagram-specific: saves, completion
+        if platform == "instagram":
+            insights = post.get("insights") or {}
+            perf.saves = insights.get("saved", perf.saves)
+            if post.get("media_type") == "VIDEO" and views > 0:
+                perf.completion_rate = insights.get("video_views", 0) / max(views, 1)
+
+        # TikTok-specific: completion
+        if platform == "tiktok":
+            perf.completion_rate = post.get("average_play_time", 0) / max(perf.total_duration, 1) if perf.total_duration > 0 else 0
 
         performances.append(perf)
 
@@ -467,9 +525,58 @@ async def run_autoresearch_cycle(
                 perf.performance_tier = classify_performance(perf, avg_views, avg_engagement)
                 perf.analyzed_at = datetime.utcnow().isoformat()
 
+        # ---- Multi-signal scoring (Marketing Machine intelligence layer) ----
+        # Compute channel average for outlier score calculation
+        all_views = [p.views for p in performances if p.views > 0]
+        global_avg_views = sum(all_views) / len(all_views) if all_views else 0
+
+        multi_signal_scores = []
+        for perf in performances:
+            try:
+                ms = score_content_multi_signal(
+                    content_id=perf.content_id,
+                    influencer_id=perf.influencer_id,
+                    platform=perf.platform,
+                    content_type=perf.content_type,
+                    funnel_stage=perf.funnel_stage,
+                    avg_view_percentage=perf.avg_view_percentage,
+                    avg_view_duration=perf.avg_view_duration,
+                    total_duration=perf.total_duration,
+                    completion_rate=perf.completion_rate if perf.completion_rate > 0 else None,
+                    views=perf.views,
+                    comments=perf.comments,
+                    saves=perf.saves,
+                    shares=perf.shares,
+                    likes=perf.likes,
+                    cta_clicks=perf.cta_clicks,
+                    link_clicks=perf.link_clicks,
+                    profile_visits=perf.profile_visits,
+                    impressions=perf.impressions,
+                    channel_avg_views=perf.channel_avg_views or global_avg_views,
+                )
+                perf.multi_signal_score = ms.total_score
+                perf.multi_signal_verdict = ms.verdict
+                perf.multi_signal_detail = score_to_dict(ms)
+                # Store raw signal values for correlation
+                for s in ms.signals:
+                    setattr(perf, f"{s.signal}_raw", s.raw_value)
+                multi_signal_scores.append(ms)
+            except Exception as e:
+                logger.warning(f"[AUTORESEARCH] Multi-signal scoring failed for {perf.content_id}: {e}")
+
+        if multi_signal_scores:
+            your_benchmark = compute_channel_benchmarks(multi_signal_scores)
+            top_10_benchmark = compute_top_10_benchmark(multi_signal_scores)
+            logger.info(
+                f"[AUTORESEARCH] Multi-signal: {len(multi_signal_scores)} scored | "
+                f"Avg hook={your_benchmark.hook:.3f} ret={your_benchmark.retention:.3f} "
+                f"eng={your_benchmark.engagement:.4f} conv={your_benchmark.conversion:.4f}"
+            )
+
         # ---- Identify top and worst performers (cross-platform) ----
-        top = [p for p in performances if p.performance_tier == "top"]
-        worst = [p for p in performances if p.performance_tier in ("below_average", "poor")]
+        # Use multi-signal score when available, fall back to tier classification
+        top = [p for p in performances if p.multi_signal_verdict in ("viral", "hit") or p.performance_tier == "top"]
+        worst = [p for p in performances if p.multi_signal_verdict in ("weak", "miss") or p.performance_tier in ("below_average", "poor")]
         cycle.top_performers = [p.content_id for p in top]
         cycle.worst_performers = [p.content_id for p in worst]
         cycle.performances = performances
@@ -479,6 +586,27 @@ async def run_autoresearch_cycle(
 
         # ---- Generate learned rules ----
         new_rules = generate_learned_rules(cycle.criteria_correlations, top, worst)
+
+        # Add multi-signal insights to rules
+        if multi_signal_scores:
+            viral_count = sum(1 for s in multi_signal_scores if s.verdict == "viral")
+            hit_count = sum(1 for s in multi_signal_scores if s.verdict == "hit")
+            miss_count = sum(1 for s in multi_signal_scores if s.verdict == "miss")
+            if viral_count + hit_count > 0:
+                new_rules.append(
+                    f"MULTI-SIGNAL: {viral_count} viral + {hit_count} hits out of "
+                    f"{len(multi_signal_scores)} scored pieces. "
+                    f"Winning formula working."
+                )
+            if miss_count > len(multi_signal_scores) * 0.3:
+                new_rules.append(
+                    f"MULTI-SIGNAL WARNING: {miss_count}/{len(multi_signal_scores)} pieces "
+                    f"scored as MISS. Review content-platform fit and hook quality."
+                )
+            # Extract pattern from top multi-signal performers
+            for ms in multi_signal_scores:
+                if ms.verdict in ("viral", "hit") and ms.lesson:
+                    new_rules.append(f"LESSON: {ms.lesson}")
 
         # Add cross-platform insights
         if len(by_platform) >= 2:

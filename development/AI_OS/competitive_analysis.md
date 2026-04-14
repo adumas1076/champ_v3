@@ -41,7 +41,7 @@
 | Multi-model routing | Unknown (likely single model) | Yes — Claude/GPT/Gemini via LiteLLM | **CHAMP** |
 | Persona / personality | No — generic agent | Yes — Champ has a real personality | **CHAMP** |
 | Mode detection | No | Yes — Vibe/Build/Spec adapts per message | **CHAMP** |
-| Memory system | Short + long-term | Profile + lessons + conversations + healing (4 layers) | **CHAMP** (deeper) |
+| Memory system | Short + long-term | 7-layer Memory Engine (snapshot, prefetch, dual-peer modeling, skills, FTS5 search, security, compression) | **CHAMP** (massively deeper) |
 | Self-improvement | Reflective agent + RL | Learning loop + healing loop | Comparable |
 | Autonomous tasks | Workflow skills | Self Mode — plan, build, test, verify, deliver | **CHAMP** (more structured) |
 | File format processing | Unknown | 30+ formats (PDF, DOCX, images, audio, video, etc.) | **CHAMP** |
@@ -66,8 +66,9 @@
 2. **Multi-model intelligence** — Claude for reasoning, Gemini for vision, GPT for fallback. Not locked to one brain.
 3. **Persona system** — Champ has a real personality, tone, style. Flowith is a generic tool.
 4. **Mode detection** — Automatically adapts output format per message intent.
-5. **Deep memory** — 4-layer memory system (profile, lessons, conversations, healing) vs basic short/long-term.
+5. **Deep memory** — 7-layer Memory Engine (frozen snapshots, async prefetch, dual-peer user modeling, self-improving skills, FTS5 session search, memory security scanning, LLM context compression) vs basic short/long-term.
 6. **Self Mode** — Structured autonomous execution with goal cards, safety rails, approval gates, result packs.
+7. **Proof-of-work recordings** — Screen recordings of autonomous tasks with cursor tracking, step annotations, auto-zoom. Nobody else has this.
 7. **Universal file processing** — 30+ formats with dedicated parsers. Just built.
 8. **Personal relationship** — CHAMP knows its user deeply. Flowith serves anyone generically.
 
@@ -110,7 +111,7 @@ CHAMP beats anyone, we need:
 | Claude (Anthropic) | Chat + artifacts | No | No (Claude only) | No | No |
 | Gemini (Google) | Chat + extensions | Yes (limited) | No (Gemini only) | No | No |
 | Rabbit R1 | Hardware AI device | Yes | Unknown | No | Limited |
-| **CHAMP V3** | **Voice-first AI OS** | **Yes (primary)** | **Yes (3 models)** | **Yes (4 layers)** | **Yes (Self Mode)** |
+| **CHAMP V3** | **Voice-first AI OS** | **Yes (primary)** | **Yes (3 models)** | **Yes (7 layers)** | **Yes (Self Mode)** |
 
 CHAMP is the only system **we know of** that combines voice-first, multi-model routing,
 deep memory, and structured autonomy in one architecture. This claim is unverified —

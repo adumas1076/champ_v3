@@ -2,6 +2,7 @@ import { Routes, Route, Link, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import VoiceCall from "./pages/VoiceCall_creative";
 import AvatarLab from "./pages/AvatarLab";
+import AvatarStudio from "./pages/AvatarStudio";
 import ConnectStack from "./pages/ConnectStack";
 import TextChat from "./pages/TextChat";
 
@@ -11,7 +12,7 @@ function Nav() {
   const location = useLocation();
 
   // Hide nav on full-screen pages
-  if (location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/connect" || location.pathname === "/chat") return null;
+  if (location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/studio" || location.pathname === "/connect" || location.pathname === "/chat") return null;
 
   const isActive = (path: string) =>
     location.pathname === path
@@ -45,7 +46,7 @@ function Nav() {
 
 export default function App() {
   const location = useLocation();
-  const isFullScreen = location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/connect" || location.pathname === "/chat";
+  const isFullScreen = location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/studio" || location.pathname === "/connect" || location.pathname === "/chat";
 
   return (
     <div className="min-h-screen bg-champ-bg text-white">
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/call" element={<VoiceCall brainUrl={BRAIN_URL} />} />
           <Route path="/chat" element={<TextChat brainUrl={BRAIN_URL} />} />
           <Route path="/avatar-lab" element={<AvatarLab />} />
+          <Route path="/studio" element={<AvatarStudio />} />
           <Route path="/connect" element={<ConnectStack />} />
         </Routes>
       ) : (

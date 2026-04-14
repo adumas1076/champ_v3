@@ -45,14 +45,20 @@ content_pillars:
   - "AI + creative tools (how AI amplifies creative output, not replaces it)"
 
 # ---- Target Platforms ----
+# NOTE: AI influencers DO NOT post on LinkedIn (99% AI detection, ban risk).
+# YouTube low-cadence only (2026 "inauthentic content" policy).
+# Visual-first creative content thrives on IG/TikTok — natural fit for AI persona.
 platforms:
   primary:
-    - instagram                       # Visual-first platform, perfect for creative
-    - youtube                         # Long-form process videos, breakdowns
+    - instagram                       # Visual-first platform, perfect for creative (AI-labeled)
+    - tiktok                          # Short creative process clips (AI-labeled)
   secondary:
-    - tiktok                          # Short creative process clips
     - twitter                         # Design opinions, creative hot takes
-    - linkedin                        # Agency thought leadership
+    - facebook                        # Cross-post from IG, creative communities (AI-labeled)
+  restricted:
+    - youtube                         # 1-2 pillar videos/week MAX, high-quality only
+  forbidden:
+    - linkedin                        # AI personas get detected/banned — protects Anthony's real LinkedIn
 
 # ---- Content Funnel Distribution ----
 funnel:
@@ -61,29 +67,39 @@ funnel:
   bottom_of_funnel: 20                # "Cocreatiq OS powers our content engine" / product demos
 
 # ---- Platform-Specific Rules ----
+# AI influencer — NO LinkedIn (auto-detected), limited YouTube (inauthentic content policy)
 platform_rules:
-  youtube:
-    format: "long_form"
-    min_duration_min: 8
-    max_duration_min: 30
-    thumbnail: "design work + face + bold typography"
-    posting_frequency: "1-2x per week"
   instagram:
     format: "reels_carousels_stories"
     max_duration_sec: 90
     captions: "always_on"
     carousel_slides: "5-10 per carousel"
-    posting_frequency: "2-3x per day"
+    posting_frequency: "3x per day"
+    ai_disclosure: "API flag + 'Made with AI' label auto-set"
   tiktok:
     format: "short_form"
     max_duration_sec: 60
     captions: "always_on"
-    posting_frequency: "1-2x per day"
+    posting_frequency: "3x per day"
+    ai_disclosure: "is_aigc flag required — handled by publisher"
   twitter:
     format: "threads_and_images"
     max_chars: 280
-    posting_frequency: "2-4x per day"
-  linkedin:
-    format: "articles_and_carousels"
-    tone_shift: "more strategic, less casual, same creative depth"
-    posting_frequency: "3-5x per week"
+    posting_frequency: "3x per day"
+    ai_disclosure: "bio + occasional post mention"
+  facebook:
+    format: "cross_post_from_ig"
+    posting_frequency: "2x per day"
+    ai_disclosure: "API flag (same token as IG)"
+  youtube:
+    # AI channel — conservative to avoid "inauthentic content" demonetization.
+    long_form:
+      frequency: "1x per week MAX"     # Design process, brand breakdowns — must be insight-rich
+      min_duration_min: 5
+      max_duration_min: 15
+    shorts:
+      frequency: "1x per day first 30 days, then 2x per day"
+      max_duration_sec: 60
+      captions: "always_on"
+    ai_disclosure: "containsSyntheticMedia=true on every upload"
+    warning: "Mass-produced/templated content triggers demonetization. Quality > quantity."

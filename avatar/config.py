@@ -10,7 +10,9 @@ from pathlib import Path
 
 class RenderMode(Enum):
     """Which rendering pipeline to use for speaking frames."""
-    FLASHHEAD_FULL = "flashhead_full"    # Full diffusion pipeline (best quality)
+    GAUSSIAN_SPLAT = "gaussian_splat"    # 3DGS client-rendered (Phase 7, best for live)
+    PERSONALIVE = "personalive"          # Zero-training instant avatar (Phase 7, single photo)
+    FLASHHEAD_FULL = "flashhead_full"    # Full diffusion pipeline (best quality async)
     SPLIT_PIPELINE = "split_pipeline"    # LivePortrait warp + FlashHead MLP (legacy)
     PLACEHOLDER = "placeholder"          # Procedural pixel effects (no GPU needed)
 
@@ -182,3 +184,76 @@ FLASHHEAD_CHUNK_AUDIO_SAMPLES = int(
 
 # Chunk generation cadence in seconds
 FLASHHEAD_CHUNK_DURATION_SEC = FLASHHEAD_USABLE_FRAMES / VIDEO_FPS  # ~1.12s
+
+# ─── Gaussian Splat (Phase 7) ───────────────────────────────────────────────
+
+# Splat storage per avatar: models/avatars/{avatar_id}/splat/
+SPLAT_DIR_NAME = "splat"
+
+# GaussianAvatars training
+SPLAT_TRAIN_ITERATIONS = int(os.getenv("CHAMP_SPLAT_TRAIN_ITERS", "30000"))
+SPLAT_SH_DEGREE = 3                        # Spherical harmonics degree
+SPLAT_RESOLUTION = 512                     # Training image resolution
+SPLAT_DENSIFY_UNTIL = 15000                # Densify Gaussians until this iteration
+SPLAT_LAMBDA_DSSIM = 0.2                   # SSIM loss weight
+SPLAT_FLAME_MODEL = "FLAME2020"            # FLAME model version
+SPLAT_NUM_GAUSSIANS_PER_TRIANGLE = 6       # Gaussians per FLAME mesh triangle
+
+# Virtual Capture Studio
+VCS_NUM_VIEWS = 96                         # Virtual camera views to generate
+VCS_EXPRESSION_VARIANTS = ["neutral", "smile", "talk", "think"]
+VCS_IDENTITY_THRESHOLD = 0.65             # InsightFace cosine similarity min
+VCS_UPSCALE_VIEWS = True                   # Upscale synthetic views to 4K
+
+# Instant Preview (FastAvatar / FaceLift)
+INSTANT_PREVIEW_TIMEOUT_SEC = 30           # Max time for instant preview generation
+
+# Client rendering
+SPLAT_MAX_FILE_SIZE_MB = 200               # Max .ply file size for browser delivery
+SPLAT_COMPRESSED_FORMAT = "splat"           # Export format: "ply" or "splat" (compressed)
+
+# Motion data channel (WebRTC DataChannel)
+MOTION_FRAME_RATE = 25                     # Motion params per second
+MOTION_FRAME_BYTES = MOTION_DIM * 4        # 55 floats × 4 bytes = 220 bytes
+MOTION_BANDWIDTH_KBS = MOTION_FRAME_BYTES * MOTION_FRAME_RATE / 1024  # ~5.4 KB/s
+
+# Reference repos (cloned to avatar/reference/)
+REFERENCE_DIR = AVATAR_DIR / "reference"
+GAUSSIAN_TALKER_DIR = REFERENCE_DIR / "GaussianTalker"
+GAUSSIAN_AVATARS_DIR = REFERENCE_DIR / "GaussianAvatars"
+FACELIFT_DIR = REFERENCE_DIR / "FaceLift"
+PERSONALIVE_DIR = REFERENCE_DIR / "PersonaLive"
+
+# FLAME model path
+FLAME_MODEL_PATH = MODELS_DIR / "flame" / "generic_model.pkl"
+FLAME_LANDMARK_PATH = MODELS_DIR / "flame" / "landmark_embedding.npy"
+
+# ─── PersonaLive (Zero-Training Instant Avatar) ─────────────────────────────
+
+# PersonaLive: real-time streaming diffusion — single photo, no per-identity training
+# Wraps: https://github.com/GVCLab/PersonaLive (Apache 2.0, CVPR 2026)
+
+PERSONALIVE_CONFIG = PERSONALIVE_DIR / "configs" / "prompts" / "personalive_online.yaml"
+PERSONALIVE_WEIGHTS_DIR = PERSONALIVE_DIR / "pretrained_weights"
+
+# Streaming parameters (from PersonaLive defaults)
+PERSONALIVE_TEMPORAL_WINDOW = 4        # Frames per diffusion batch
+PERSONALIVE_TEMPORAL_STEP = 4          # Sliding window stride
+PERSONALIVE_DDIM_STEPS = 4            # Denoising steps (fixed: 999, 666, 333, 0)
+PERSONALIVE_RESOLUTION = 512           # Output resolution
+PERSONALIVE_DTYPE = "fp16"             # Inference precision
+PERSONALIVE_FPS = 16                   # Default output FPS (adaptive 10-30)
+
+# Adaptive keyframe injection (drift prevention)
+PERSONALIVE_MOTION_BANK_THRESHOLD = 17.0  # Euclidean distance for novel motion detection
+PERSONALIVE_MAX_KEYFRAME_INJECTIONS = 3   # Max re-fusions before stopping
+
+# Model weight files (6 pretrained components)
+PERSONALIVE_WEIGHT_FILES = [
+    "personalive/reference_unet.pth",
+    "personalive/denoising_unet.pth",
+    "personalive/pose_guider.pth",
+    "personalive/motion_encoder.pth",
+    "personalive/temporal_module.pth",
+    "personalive/motion_extractor.pth",
+]

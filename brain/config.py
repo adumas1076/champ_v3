@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # --- Persona ---
     persona_dir: Path = Path(__file__).resolve().parent.parent / "persona"
-    default_persona: str = "champ_core.md"
+    default_persona: str = "compiled/champ_prompt.md"
 
     # --- Multi-User ---
     default_user: str = Field(default="anthony", alias="DEFAULT_USER")

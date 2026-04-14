@@ -203,6 +203,7 @@ class BaseOperator(Agent):
         self,
         instructions: str,
         llm: Any = None,
+        tts: Any = None,
         chat_ctx: ChatContext = None,
         domain_tools: list = None,
         tool_permissions: set[str] | None = None,
@@ -216,12 +217,16 @@ class BaseOperator(Agent):
         # Compose final instructions: operator persona + OS tool instructions
         full_instructions = instructions + OS_TOOL_INSTRUCTIONS
 
-        super().__init__(
-            instructions=full_instructions,
-            llm=llm or openai.realtime.RealtimeModel(voice="ash"),
-            chat_ctx=chat_ctx,
-            tools=tools,
-        )
+        agent_kwargs = {
+            "instructions": full_instructions,
+            "llm": llm or openai.realtime.RealtimeModel(voice="ash"),
+            "chat_ctx": chat_ctx,
+            "tools": tools,
+        }
+        if tts is not None:
+            agent_kwargs["tts"] = tts
+
+        super().__init__(**agent_kwargs)
 
         self._domain_tools = domain_tools or []
         self._tool_permissions = tool_permissions
@@ -399,23 +404,34 @@ class BaseOperator(Agent):
             instructions += superpower_text
             logger.info(f"[OS] Loaded {loaded}/{len(superpowers)} superpowers for '{config_name}'")
 
-        # Load boundaries into instructions
-        boundaries = config.get("boundaries", [])
-        if boundaries:
-            boundary_text = "\n\n# === BOUNDARIES ===\nYou must NEVER:\n"
-            for b in boundaries:
-                boundary_text += f"- {b}\n"
-            instructions += boundary_text
+        # --- Layer 1: OS System Prompt ---
+        # Boundaries and escalation are now handled by the OS prompt.
+        # No need to manually append them to persona instructions.
+        from os_system_prompt import build_os_system_prompt, build_orchestrator_prompt
 
-        # Load escalation rules into instructions
+        boundaries = config.get("boundaries", [])
         escalation = config.get("escalation", [])
-        if escalation:
-            esc_text = "\n\n# === ESCALATION RULES ===\n"
-            for esc in escalation:
-                trigger = esc.get("trigger", "")
-                target = esc.get("hand_off_to", "")
-                esc_text += f"- When: {trigger} → Hand off to: {target}\n"
-            instructions += esc_text
+
+        os_prompt = build_os_system_prompt(
+            operator_name=config.get("name", config_name),
+            operator_role=config.get("description", ""),
+            session_id="pending",  # Real session ID injected at runtime via context
+            channel="voice",
+            boundaries=boundaries,
+            escalation_rules=escalation,
+            channels_config=config.get("channels", {}),
+        )
+
+        # --- Layer 3: Orchestrator Prompt (if operator can delegate) ---
+        a2a_config = config.get("a2a", {})
+        orchestrator_prompt = build_orchestrator_prompt(
+            can_delegate_to=a2a_config.get("can_delegate_to", []),
+            can_receive_from=a2a_config.get("can_receive_from", []),
+        )
+
+        # Final assembly: OS (Layer 1) + Orchestrator (Layer 3) + Persona (Layer 2)
+        # OS_TOOL_INSTRUCTIONS appended by __init__
+        instructions = os_prompt + orchestrator_prompt + "\n\n" + instructions
 
         # Tool permissions (None = all, set = filtered)
         perms = config.get("tool_permissions")
@@ -427,7 +443,8 @@ class BaseOperator(Agent):
             f"tools={'all' if tool_permissions is None else len(tool_permissions)} | "
             f"superpowers={len(superpowers)} | "
             f"boundaries={len(boundaries)} | "
-            f"escalation={len(escalation)}"
+            f"escalation={len(escalation)} | "
+            f"os_prompt={len(os_prompt)} chars"
         )
 
         return cls(

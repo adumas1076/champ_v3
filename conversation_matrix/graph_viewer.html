@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation Matrix Graph — Cocreatiq OS</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0f;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+        }
+        #graph-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #network {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Info Panel */
+        #info-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 380px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            background: rgba(15, 15, 25, 0.95);
+            border: 1px solid rgba(120, 80, 255, 0.3);
+            border-radius: 12px;
+            padding: 24px;
+            backdrop-filter: blur(20px);
+            display: none;
+            z-index: 10;
+        }
+        #info-panel.visible { display: block; }
+        #info-panel h2 {
+            font-size: 18px;
+            color: #a78bfa;
+            margin-bottom: 4px;
+        }
+        #info-panel .subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 16px;
+        }
+        #info-panel .section {
+            margin-bottom: 16px;
+        }
+        #info-panel .section h3 {
+            font-size: 13px;
+            color: #7c3aed;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        #info-panel .section p {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #bbb;
+        }
+        #info-panel .edge-list {
+            list-style: none;
+            padding: 0;
+        }
+        #info-panel .edge-list li {
+            font-size: 12px;
+            padding: 4px 0;
+            color: #999;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        #info-panel .edge-list li span.arrow {
+            color: #7c3aed;
+            margin: 0 6px;
+        }
+        #info-panel .close-btn {
+            position: absolute;
+            top: 12px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        #info-panel .close-btn:hover { color: #fff; }
+
+        /* Header */
+        #header {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+        }
+        #header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a78bfa, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #header .tag {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        /* Stats Bar */
+        #stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 24px;
+            z-index: 10;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat .value {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a78bfa, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat .label {
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Test Results Panel */
+        #test-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(15, 15, 25, 0.95);
+            border: 1px solid rgba(120, 80, 255, 0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            backdrop-filter: blur(20px);
+            z-index: 10;
+        }
+        #test-panel h3 {
+            font-size: 12px;
+            color: #7c3aed;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .score-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 0;
+            font-size: 12px;
+        }
+        .score-row .name { color: #999; }
+        .score-bar {
+            width: 120px;
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            margin: 0 10px;
+            overflow: hidden;
+        }
+        .score-bar .fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 1s ease;
+        }
+        .score-bar .fill.before { background: #ef4444; }
+        .score-bar .fill.after { background: linear-gradient(90deg, #a78bfa, #ec4899); }
+        .score-val { min-width: 30px; text-align: right; font-weight: 600; }
+        .score-val.low { color: #ef4444; }
+        .score-val.high { color: #a78bfa; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Conversation Matrix Graph</h1>
+        <div class="tag">Cocreatiq OS — 6 Node Architecture</div>
+    </div>
+
+    <div id="graph-container">
+        <div id="network"></div>
+    </div>
+
+    <div id="info-panel">
+        <button class="close-btn" onclick="closePanel()">&times;</button>
+        <h2 id="panel-title"></h2>
+        <div class="subtitle" id="panel-subtitle"></div>
+        <div id="panel-content"></div>
+    </div>
+
+    <div id="stats">
+        <div class="stat"><div class="value">6</div><div class="label">Nodes</div></div>
+        <div class="stat"><div class="value">23</div><div class="label">Edges</div></div>
+        <div class="stat"><div class="value">27</div><div class="label">Laws</div></div>
+        <div class="stat"><div class="value">95%</div><div class="label">AI Pattern Reduction</div></div>
+        <div class="stat"><div class="value">5.2x</div><div class="label">Variance Gain</div></div>
+    </div>
+
+    <div id="test-panel">
+        <h3>Test Results — Before vs After</h3>
+        <div class="score-row">
+            <span class="name">Casual Greeting</span>
+            <div class="score-bar"><div class="fill before" style="width:43%"></div></div>
+            <span class="score-val low">4.3</span>
+            <div class="score-bar"><div class="fill after" style="width:77%"></div></div>
+            <span class="score-val high">7.7</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Exciting News</span>
+            <div class="score-bar"><div class="fill before" style="width:37%"></div></div>
+            <span class="score-val low">3.7</span>
+            <div class="score-bar"><div class="fill after" style="width:87%"></div></div>
+            <span class="score-val high">8.7</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Frustration</span>
+            <div class="score-bar"><div class="fill before" style="width:43%"></div></div>
+            <span class="score-val low">4.3</span>
+            <div class="score-bar"><div class="fill after" style="width:73%"></div></div>
+            <span class="score-val high">7.3</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Technical Q</span>
+            <div class="score-bar"><div class="fill before" style="width:23%"></div></div>
+            <span class="score-val low">2.3</span>
+            <div class="score-bar"><div class="fill after" style="width:77%"></div></div>
+            <span class="score-val high">7.7</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Disagreement</span>
+            <div class="score-bar"><div class="fill before" style="width:17%"></div></div>
+            <span class="score-val low">1.7</span>
+            <div class="score-bar"><div class="fill after" style="width:77%"></div></div>
+            <span class="score-val high">7.7</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Callback</span>
+            <div class="score-bar"><div class="fill before" style="width:10%"></div></div>
+            <span class="score-val low">1.0</span>
+            <div class="score-bar"><div class="fill after" style="width:85%"></div></div>
+            <span class="score-val high">8.5</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Long Explain</span>
+            <div class="score-bar"><div class="fill before" style="width:7%"></div></div>
+            <span class="score-val low">0.7</span>
+            <div class="score-bar"><div class="fill after" style="width:70%"></div></div>
+            <span class="score-val high">7.0</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Vulnerability</span>
+            <div class="score-bar"><div class="fill before" style="width:25%"></div></div>
+            <span class="score-val low">2.5</span>
+            <div class="score-bar"><div class="fill after" style="width:80%"></div></div>
+            <span class="score-val high">8.0</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Roasting</span>
+            <div class="score-bar"><div class="fill before" style="width:10%"></div></div>
+            <span class="score-val low">1.0</span>
+            <div class="score-bar"><div class="fill after" style="width:83%"></div></div>
+            <span class="score-val high">8.3</span>
+        </div>
+        <div class="score-row">
+            <span class="name">Energy Shift</span>
+            <div class="score-bar"><div class="fill before" style="width:27%"></div></div>
+            <span class="score-val low">2.7</span>
+            <div class="score-bar"><div class="fill after" style="width:93%"></div></div>
+            <span class="score-val high">9.3</span>
+        </div>
+        <div class="score-row" style="margin-top:8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top:8px;">
+            <span class="name" style="font-weight:700; color:#e0e0e0;">AVERAGE</span>
+            <div class="score-bar"><div class="fill before" style="width:24%"></div></div>
+            <span class="score-val low" style="font-size:14px;">2.4</span>
+            <div class="score-bar"><div class="fill after" style="width:80%"></div></div>
+            <span class="score-val high" style="font-size:14px;">8.0</span>
+        </div>
+    </div>
+
+    <script>
+    // ---- Node Data ----
+    const nodeData = [
+        {
+            id: 1,
+            label: "Conversation\nDNA",
+            title: "27 Laws of Human Conversation",
+            color: { background: "#7c3aed", border: "#a78bfa", highlight: { background: "#8b5cf6", border: "#c4b5fd" }},
+            font: { color: "#fff", size: 16, face: "Segoe UI", bold: true },
+            size: 45,
+            shape: "dot",
+            shadow: { enabled: true, color: "rgba(124,58,237,0.4)", size: 20 },
+            info: {
+                subtitle: "Node 1 — The Fingerprint",
+                description: "27 Laws organized into 5 layers: Thinking, Speaking, Flowing, Connecting, Energy. Each law has a 0-10 dial. Operators customize by dialing laws up or down.",
+                sends: ["Persona: active behavioral rules", "Scoring: criteria to score against", "Hooks: anti-patterns to watch for", "Memory: what patterns to track", "Delivery: style constraints"],
+                receives: ["Persona: dial override positions", "Memory: user law preference profile", "Scoring: law effectiveness feedback"],
+            }
+        },
+        {
+            id: 2,
+            label: "Persona\nLayer",
+            title: "WHO the operator is",
+            color: { background: "#ec4899", border: "#f472b6", highlight: { background: "#f472b6", border: "#fbcfe8" }},
+            font: { color: "#fff", size: 16, face: "Segoe UI", bold: true },
+            size: 40,
+            shape: "dot",
+            shadow: { enabled: true, color: "rgba(236,72,153,0.4)", size: 20 },
+            info: {
+                subtitle: "Node 2 — The Identity",
+                description: "7-section schema: Identity Core, Relational Stance, Voice & Speech, DNA Overrides, Mode Detection, Capabilities, Few-Shot Calibration. Every operator uses the same schema.",
+                sends: ["DNA: dial override positions", "Hooks: mode triggers + personality patterns", "Delivery: voice/tone/style settings", "Memory: identity facts to persist"],
+                receives: ["DNA: active behavioral rules", "Memory: user model + relationship history", "Scoring: performance feedback"],
+            }
+        },
+        {
+            id: 3,
+            label: "Hook\nSystem",
+            title: "Pre/post response interception",
+            color: { background: "#06b6d4", border: "#22d3ee", highlight: { background: "#22d3ee", border: "#67e8f9" }},
+            font: { color: "#fff", size: 16, face: "Segoe UI", bold: true },
+            size: 42,
+            shape: "dot",
+            shadow: { enabled: true, color: "rgba(6,182,212,0.4)", size: 20 },
+            info: {
+                subtitle: "Node 3 — The Gatekeeper",
+                description: "Pre-hooks: security scan, mode detection, friction detection, emotion detection, memory injection, callback injection, skill recall. Post-hooks: conversation scoring, callback extraction, entity extraction.",
+                sends: ["Persona: emotion + memory context injection", "Scoring: response to validate", "Memory: extracted callbacks + entities", "Delivery: go/no-go signal"],
+                receives: ["DNA: anti-patterns per law", "Persona: mode triggers", "Memory: recalled memories + callbacks", "Scoring: pass/fail result"],
+            }
+        },
+        {
+            id: 4,
+            label: "Dual\nMemory",
+            title: "Static rules + Dynamic learnings",
+            color: { background: "#10b981", border: "#34d399", highlight: { background: "#34d399", border: "#6ee7b7" }},
+            font: { color: "#fff", size: 16, face: "Segoe UI", bold: true },
+            size: 40,
+            shape: "dot",
+            shadow: { enabled: true, color: "rgba(16,185,129,0.4)", size: 20 },
+            info: {
+                subtitle: "Node 4 — The Relationship",
+                description: "Existing: Supabase (profile, lessons, healing) + Letta (5 blocks) + Mem0 (semantic search). NEW: 5 tables — conv_callbacks, conv_emotional_arcs, conv_law_scores, conv_relationship_stage, conv_unresolved_threads.",
+                sends: ["Hooks: memories + callbacks for injection", "Persona: user model + relationship stage", "DNA: law preference profile per user", "Scoring: historical baselines"],
+                receives: ["Hooks: new callbacks + entities + emotions", "Scoring: per-law effectiveness scores", "Persona: operator identity facts"],
+            }
+        },
+        {
+            id: 5,
+            label: "Conversation\nScoring",
+            title: "Fingerprint validator",
+            color: { background: "#f59e0b", border: "#fbbf24", highlight: { background: "#fbbf24", border: "#fde68a" }},
+            font: { color: "#fff", size: 16, face: "Segoe UI", bold: true },
+            size: 38,
+            shape: "dot",
+            shadow: { enabled: true, color: "rgba(245,158,11,0.4)", size: 20 },
+            info: {
+                subtitle: "Node 5 — The Quality Gate",
+                description: "Tier 1: Regex quick check — 14 absolute violations, <5ms. Tier 2: LLM deep scoring — 27-law evaluation, sampled 20%, async. Composite score weighted by dial positions. Regeneration on violation (max 2 retries).",
+                sends: ["Hooks: pass/fail + regeneration feedback", "Memory: per-law scores for learning", "DNA: law effectiveness data", "Persona: performance feedback"],
+                receives: ["DNA: scoring criteria + dial weights", "Hooks: response to validate", "Memory: historical baselines"],
+            }
+        },
+        {
+            id: 6,
+            label: "Delivery\nEngine",
+            title: "Voice + Text humanization",
+            color: { background: "#ef4444", border: "#f87171", highlight: { background: "#f87171", border: "#fca5a5" }},
+            font: { color: "#fff", size: 16, face: "Segoe UI", bold: true },
+            size: 38,
+            shape: "dot",
+            shadow: { enabled: true, color: "rgba(239,68,68,0.4)", size: 20 },
+            info: {
+                subtitle: "Node 6 — The Last Mile",
+                description: "Voice path: prosody tag injection, TTS streaming, backchannel injection, turn-taking. Text path: message splitting (2-4 bubbles), typing simulation (20-25ms/char), strategic imperfection, delivery timing.",
+                sends: ["Memory: what was delivered + timestamps", "Hooks: delivery confirmation"],
+                receives: ["Hooks: go signal + validated response", "Persona: voice/tone/style settings", "DNA: style constraints"],
+            }
+        },
+    ];
+
+    // ---- Edge Data ----
+    const edgeData = [
+        // DNA connections
+        { from: 1, to: 2, label: "rules", arrows: "to", color: { color: "rgba(167,139,250,0.4)", highlight: "#a78bfa" }, width: 2 },
+        { from: 1, to: 5, label: "criteria", arrows: "to", color: { color: "rgba(167,139,250,0.4)", highlight: "#a78bfa" }, width: 2 },
+        { from: 1, to: 3, label: "watch for", arrows: "to", color: { color: "rgba(167,139,250,0.3)", highlight: "#a78bfa" }, width: 1 },
+        { from: 1, to: 4, label: "track", arrows: "to", color: { color: "rgba(167,139,250,0.3)", highlight: "#a78bfa" }, width: 1 },
+        { from: 1, to: 6, label: "style", arrows: "to", color: { color: "rgba(167,139,250,0.3)", highlight: "#a78bfa" }, width: 1 },
+        // Persona connections
+        { from: 2, to: 1, label: "dials", arrows: "to", color: { color: "rgba(236,72,153,0.4)", highlight: "#ec4899" }, width: 2 },
+        { from: 2, to: 3, label: "triggers", arrows: "to", color: { color: "rgba(236,72,153,0.3)", highlight: "#ec4899" }, width: 1 },
+        { from: 2, to: 6, label: "voice config", arrows: "to", color: { color: "rgba(236,72,153,0.3)", highlight: "#ec4899" }, width: 1 },
+        { from: 2, to: 4, label: "identity", arrows: "to", color: { color: "rgba(236,72,153,0.3)", highlight: "#ec4899" }, width: 1 },
+        // Hook connections
+        { from: 3, to: 2, label: "context", arrows: "to", color: { color: "rgba(6,182,212,0.5)", highlight: "#06b6d4" }, width: 3 },
+        { from: 3, to: 5, label: "validate", arrows: "to", color: { color: "rgba(6,182,212,0.5)", highlight: "#06b6d4" }, width: 3 },
+        { from: 3, to: 4, label: "extract", arrows: "to", color: { color: "rgba(6,182,212,0.4)", highlight: "#06b6d4" }, width: 2 },
+        { from: 3, to: 6, label: "go/no-go", arrows: "to", color: { color: "rgba(6,182,212,0.5)", highlight: "#06b6d4" }, width: 3 },
+        // Memory connections
+        { from: 4, to: 3, label: "inject", arrows: "to", color: { color: "rgba(16,185,129,0.4)", highlight: "#10b981" }, width: 2 },
+        { from: 4, to: 2, label: "user model", arrows: "to", color: { color: "rgba(16,185,129,0.3)", highlight: "#10b981" }, width: 1 },
+        { from: 4, to: 1, label: "law prefs", arrows: "to", color: { color: "rgba(16,185,129,0.3)", highlight: "#10b981" }, width: 1 },
+        { from: 4, to: 5, label: "baselines", arrows: "to", color: { color: "rgba(16,185,129,0.3)", highlight: "#10b981" }, width: 1 },
+        // Scoring connections
+        { from: 5, to: 3, label: "pass/fail", arrows: "to", color: { color: "rgba(245,158,11,0.5)", highlight: "#f59e0b" }, width: 3 },
+        { from: 5, to: 4, label: "scores", arrows: "to", color: { color: "rgba(245,158,11,0.3)", highlight: "#f59e0b" }, width: 1 },
+        { from: 5, to: 1, label: "feedback", arrows: "to", color: { color: "rgba(245,158,11,0.3)", highlight: "#f59e0b" }, width: 1 },
+        { from: 5, to: 2, label: "performance", arrows: "to", color: { color: "rgba(245,158,11,0.3)", highlight: "#f59e0b" }, width: 1 },
+        // Delivery connections
+        { from: 6, to: 4, label: "delivered", arrows: "to", color: { color: "rgba(239,68,68,0.3)", highlight: "#ef4444" }, width: 1 },
+        { from: 6, to: 3, label: "confirm", arrows: "to", color: { color: "rgba(239,68,68,0.3)", highlight: "#ef4444" }, width: 1 },
+    ];
+
+    // ---- Create Network ----
+    const container = document.getElementById("network");
+    const data = {
+        nodes: new vis.DataSet(nodeData),
+        edges: new vis.DataSet(edgeData),
+    };
+
+    const options = {
+        physics: {
+            forceAtlas2Based: {
+                gravitationalConstant: -80,
+                centralGravity: 0.008,
+                springLength: 200,
+                springConstant: 0.04,
+                damping: 0.4,
+            },
+            solver: "forceAtlas2Based",
+            stabilization: { iterations: 150 },
+        },
+        edges: {
+            smooth: { type: "curvedCW", roundness: 0.15 },
+            font: { size: 10, color: "#555", strokeWidth: 0, face: "Segoe UI" },
+            arrows: { to: { scaleFactor: 0.6 } },
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 200,
+            zoomView: true,
+            dragView: true,
+        },
+    };
+
+    const network = new vis.Network(container, data, options);
+
+    // ---- Click Handler ----
+    network.on("click", function(params) {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const node = nodeData.find(n => n.id === nodeId);
+            if (node && node.info) {
+                showPanel(node);
+            }
+        } else {
+            closePanel();
+        }
+    });
+
+    function showPanel(node) {
+        const panel = document.getElementById("info-panel");
+        document.getElementById("panel-title").textContent = node.label.replace("\n", " ");
+        document.getElementById("panel-subtitle").textContent = node.info.subtitle;
+
+        let html = "";
+
+        // Description
+        html += '<div class="section"><h3>What It Does</h3><p>' + node.info.description + '</p></div>';
+
+        // Sends
+        if (node.info.sends && node.info.sends.length) {
+            html += '<div class="section"><h3>Sends To</h3><ul class="edge-list">';
+            node.info.sends.forEach(function(s) {
+                var parts = s.split(": ");
+                var target = parts[0];
+                var desc = parts.slice(1).join(": ");
+                html += '<li><strong>' + target + '</strong><span class="arrow">&rarr;</span>' + desc + '</li>';
+            });
+            html += '</ul></div>';
+        }
+
+        // Receives
+        if (node.info.receives && node.info.receives.length) {
+            html += '<div class="section"><h3>Receives From</h3><ul class="edge-list">';
+            node.info.receives.forEach(function(r) {
+                var parts = r.split(": ");
+                var source = parts[0];
+                var desc = parts.slice(1).join(": ");
+                html += '<li><strong>' + source + '</strong><span class="arrow">&rarr;</span>' + desc + '</li>';
+            });
+            html += '</ul></div>';
+        }
+
+        document.getElementById("panel-content").innerHTML = html;
+        panel.classList.add("visible");
+    }
+
+    function closePanel() {
+        document.getElementById("info-panel").classList.remove("visible");
+    }
+
+    // ---- Animate score bars on load ----
+    window.addEventListener("load", function() {
+        document.querySelectorAll(".score-bar .fill").forEach(function(bar) {
+            var w = bar.style.width;
+            bar.style.width = "0%";
+            setTimeout(function() { bar.style.width = w; }, 500);
+        });
+    });
+    </script>
+</body>
+</html>

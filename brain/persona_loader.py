@@ -92,6 +92,21 @@ class PersonaLoader:
         """Return the current persona text."""
         return self._persona_text
 
+    def append_dna_rules(self, compiled_rules: str) -> None:
+        """
+        Append compiled Conversation DNA rules to the persona.
+
+        Called during boot sequence after DNA compilation.
+        The compiled rules become part of the persona prompt
+        so the LLM receives them as behavioral instructions.
+        """
+        if compiled_rules:
+            self._persona_text += "\n\n---\n\n" + compiled_rules
+            logger.info(
+                f"Conversation DNA rules appended to persona "
+                f"({len(compiled_rules)} chars)"
+            )
+
     async def reload(self) -> None:
         """Hot-reload persona from disk without restart."""
         await self.load()

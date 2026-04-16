@@ -56,6 +56,12 @@ channels:
   video: false
   screen_share: true            # Visual review of UI/content
 
+# ---- Limits (Hermes iteration budget pattern) ----
+limits:
+  max_iterations: 90
+  max_spend_per_session: 1.00
+  max_spend_alert_pct: 80
+
 # ---- Boundaries ----
 boundaries:
   - "NEVER modify the work — only evaluate and return with specific fix instructions"

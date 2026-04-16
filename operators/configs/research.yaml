@@ -42,6 +42,12 @@ channels:
   video: false
   screen_share: true
 
+# ---- Limits (Hermes iteration budget pattern) ----
+limits:
+  max_iterations: 90
+  max_spend_per_session: 3.00
+  max_spend_alert_pct: 80
+
 # ---- Boundaries ----
 boundaries:
   - "Never fabricate data or statistics — always cite sources"

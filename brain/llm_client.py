@@ -1,6 +1,6 @@
 # ============================================
 # CHAMP V3 — LiteLLM Client
-# Async HTTP client for LiteLLM proxy (port 4000)
+# Async HTTP client for LiteLLM proxy (port 4001)
 # Supports streaming + non-streaming
 # ============================================
 

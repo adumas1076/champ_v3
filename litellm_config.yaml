@@ -1,51 +1,139 @@
 # ============================================
-# CHAMP V3 — LiteLLM Brain Router
+# CHAMP V3 — LiteLLM Brain Router (Cortex Routing)
 # Phase 2: THE BRAIN
 # Built to build. Born to create.
 # ============================================
-# Multi-model router:
-#   - Claude Sonnet 4.5 (PRIMARY — deep thinking, coding, all-around)
-#   - Gemini Flash (VISION — image/screen analysis, fast multimodal)
-#   - GPT-4o (FALLBACK — creative tasks, backup brain)
+# Multi-model Cortex Router:
+#   REASONING  — Claude Sonnet 4.6 (deep thinking, coding, BOFU sales)
+#   QA         — Claude Haiku 4.5 (eval scoring, structured analysis)
+#   ACTION     — GPT-4o (tool execution, function calling, fallback)
+#   VISION     — Gemini 2.0 Flash (screen reading, image analysis)
+#   VOLUME     — Gemini 2.5 Flash (TOFU content, cheap + fast)
+#   VOICE      — Grok 3 Mini (voice scripts, conversational tone)
+#   HOOKS      — Llama 3.1 8B on Groq (A/B hook generation, dirt cheap)
+#
+# Routing logic lives in brain/cortex_router.py
+# This config just registers all available models.
 
 model_list:
-  # ---- PRIMARY BRAIN: Claude Sonnet 4.5 ----
-  # Default for everything. Deep reasoning, coding, analysis.
+
+  # ============================================
+  # REASONING CORTEX — Claude Sonnet 4.6
+  # ============================================
+  # Primary brain. Deep reasoning, coding, architecture,
+  # BOFU sales content, autoresearch, strategy.
+  # Cost: $3/M in, $15/M out
   - model_name: claude-sonnet
     litellm_params:
-      model: anthropic/claude-sonnet-4-5-20250929
+      model: anthropic/claude-sonnet-4-6-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 8192
+
+  # ============================================
+  # QA CORTEX — Claude Haiku 4.5
+  # ============================================
+  # Fast + structured. Content eval scoring, QA gates,
+  # MOFU posts, lightweight analysis.
+  # Cost: $1/M in, $5/M out
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
       api_key: os.environ/ANTHROPIC_API_KEY
       max_tokens: 4096
 
-  # ---- VISION BRAIN: Gemini 2.0 Flash ----
-  # Fast multimodal. Screen reading, image analysis, video frames.
-  - model_name: gemini-flash
-    litellm_params:
-      model: gemini/gemini-2.0-flash
-      api_key: os.environ/GOOGLE_API_KEY
-      max_tokens: 4096
-
-  # ---- FALLBACK BRAIN: GPT-4o ----
-  # Strong creative writing, reliable backup if Claude is down.
+  # ============================================
+  # ACTION CORTEX — GPT-4o
+  # ============================================
+  # Best function calling + structured output.
+  # Tool execution, JSON mode, fallback brain.
+  # Cost: $2.50/M in, $10/M out
   - model_name: gpt-4o
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
       max_tokens: 4096
 
-# ---- ROUTER SETTINGS ----
+  # ============================================
+  # VISION CORTEX — Gemini 2.0 Flash
+  # ============================================
+  # Fast multimodal. Screen reading, image analysis,
+  # video frames, UI checking.
+  # Cost: $0.10/M in, $0.40/M out
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 4096
+
+  # ============================================
+  # VOLUME CORTEX — Gemini 2.5 Flash
+  # ============================================
+  # Cheapest quality model. TOFU text posts (60% of content),
+  # bulk drafts, summaries, reformatting.
+  # Cost: $0.075/M in, $0.30/M out
+  - model_name: gemini-flash-volume
+    litellm_params:
+      model: gemini/gemini-2.5-flash-preview-05-20
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 4096
+
+  # ============================================
+  # VOICE CORTEX — Grok 3 Mini
+  # ============================================
+  # Natural conversational tone. Voice scripts,
+  # casual chat, emotional mirroring.
+  # Cost: $0.30/M in, $0.50/M out
+  - model_name: grok-mini
+    litellm_params:
+      model: xai/grok-3-mini
+      api_key: os.environ/XAI_API_KEY
+      max_tokens: 4096
+
+  # ============================================
+  # HOOK CORTEX — Llama 3.1 8B on Groq
+  # ============================================
+  # Insanely fast (500+ tok/sec). Generate 20 hook
+  # variants, pick best. A/B testing at scale.
+  # Cost: $0.05/M in, $0.08/M out (nearly free)
+  - model_name: llama-groq
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+      max_tokens: 2048
+
+
+# ============================================
+# ROUTER SETTINGS
+# ============================================
 router_settings:
   routing_strategy: simple-shuffle
-  num_retries: 2
+  num_retries: 3
   timeout: 120
   fallbacks:
-    # If Claude goes down, fall back to GPT-4o
+    # Reasoning: Claude → GPT-4o
     - claude-sonnet: [gpt-4o]
+    # QA: Haiku → Gemini Flash Volume
+    - claude-haiku: [gemini-flash-volume]
+    # Voice: Grok → GPT-4o
+    - grok-mini: [gpt-4o]
+    # Volume: Gemini 2.5 Flash → Haiku
+    - gemini-flash-volume: [claude-haiku]
+    # Hooks: Groq → Gemini Flash Volume
+    - llama-groq: [gemini-flash-volume]
 
-# ---- LITELLM SETTINGS ----
+# ============================================
+# LITELLM SETTINGS
+# ============================================
 litellm_settings:
   modify_params: true
+  drop_params: true
+  # Enable spend tracking
+  success_callback: ["langfuse"]
+  max_budget: 50.0
+  budget_duration: "30d"
 
-# ---- GENERAL SETTINGS ----
+# ============================================
+# GENERAL SETTINGS
+# ============================================
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="BRAIN_HOST")
     port: int = Field(default=8100, alias="PORT")
 
-    # --- LiteLLM upstream (port 4000) ---
+    # --- LiteLLM upstream (port 4001) ---
     litellm_base_url: str = Field(
-        default="http://127.0.0.1:4000/v1", alias="LITELLM_BASE_URL"
+        default="http://127.0.0.1:4001/v1", alias="LITELLM_BASE_URL"
     )
     litellm_api_key: str = Field(alias="LITELLM_MASTER_KEY")
     default_model: str = "claude-sonnet"

@@ -39,6 +39,12 @@ channels:
   video: true                 # Face-to-face for escalation calls
   screen_share: true
 
+# ---- Limits (Hermes iteration budget pattern) ----
+limits:
+  max_iterations: 90
+  max_spend_per_session: 2.00
+  max_spend_alert_pct: 80
+
 # ---- Boundaries ----
 boundaries:
   - "Never issue a refund without following the scripted CS process first"

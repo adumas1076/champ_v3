@@ -1,0 +1,87 @@
+# ============================================
+# CHAMP V3 — LiteLLM Local Dev Config
+# Profile: CHAMP_PROFILE=local
+#
+# Includes Ollama for FREE local inference during dev.
+# Cloud models available as fallback when API keys are set.
+# ============================================
+
+model_list:
+
+  # ---- LOCAL: Ollama (FREE — runs on your machine) ----
+  # Install: curl -fsSL https://ollama.com/install.sh | sh
+  # Run: ollama run llama3.1:8b
+  # Ollama serves OpenAI-compatible API on localhost:11434
+  - model_name: local
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://localhost:11434
+      max_tokens: 4096
+
+  - model_name: local-small
+    litellm_params:
+      model: ollama/phi4:latest
+      api_base: http://localhost:11434
+      max_tokens: 2048
+
+  # ---- CLOUD FALLBACKS (when API keys are set) ----
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 8192
+
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 4096
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      max_tokens: 4096
+
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 4096
+
+  - model_name: gemini-flash-volume
+    litellm_params:
+      model: gemini/gemini-2.5-flash-preview-05-20
+      api_key: os.environ/GOOGLE_API_KEY
+      max_tokens: 4096
+
+  # Grok + Groq optional in local dev
+  - model_name: grok-mini
+    litellm_params:
+      model: xai/grok-3-mini
+      api_key: os.environ/XAI_API_KEY
+      max_tokens: 4096
+
+  - model_name: llama-groq
+    litellm_params:
+      model: groq/llama-3.1-8b-instant
+      api_key: os.environ/GROQ_API_KEY
+      max_tokens: 2048
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  timeout: 180  # longer timeout for local models
+  fallbacks:
+    # Local → cloud fallbacks
+    - local: [claude-sonnet]
+    - local-small: [claude-haiku]
+    - claude-sonnet: [gpt-4o]
+    - claude-haiku: [gemini-flash-volume]
+
+litellm_settings:
+  modify_params: true
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

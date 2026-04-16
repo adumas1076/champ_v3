@@ -40,6 +40,12 @@ channels:
   video: true                # Onboarding + kickoff calls on video
   screen_share: true
 
+# ---- Limits (Hermes iteration budget pattern) ----
+limits:
+  max_iterations: 90
+  max_spend_per_session: 2.00
+  max_spend_alert_pct: 80
+
 # ---- Boundaries ----
 boundaries:
   - "Never skip the onboarding call — every client gets a 1-on-1"

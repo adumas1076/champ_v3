@@ -60,17 +60,13 @@ async def generate_script(
 
     system = _build_system_prompt(influencer_id, brand_voice)
 
-    # Try API mode first (brain running as separate service)
+    # All LLM calls go through the Brain API (single endpoint — Nemoclaw pattern)
+    # No direct LiteLLM calls — if Brain is down, fail loudly.
     result = await _call_brain_api(prompt, system)
     if result:
         return result
 
-    # Fallback: try direct LiteLLM call
-    result = await _call_litellm_direct(prompt, system)
-    if result:
-        return result
-
-    logger.warning(f"[LLM_ADAPTER] Generation failed for {topic} on {platform} — no LLM available")
+    logger.error(f"[LLM_ADAPTER] Generation failed for {topic} on {platform} — Brain API unavailable. Check BRAIN_URL={BRAIN_URL}")
     return None
 
 
@@ -233,25 +229,6 @@ async def _call_brain_api(prompt: str, system: str) -> Optional[str]:
         return None
 
 
-async def _call_litellm_direct(prompt: str, system: str) -> Optional[str]:
-    """Direct LiteLLM call as fallback (if brain not running as service)."""
-    try:
-        import litellm
-
-        model = os.getenv("LITELLM_MODEL", "anthropic/claude-sonnet-4-20250514")
-        response = await litellm.acompletion(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=1000,
-            temperature=0.8,
-        )
-        return response.choices[0].message.content
-    except ImportError:
-        logger.debug("[LLM_ADAPTER] litellm not available")
-        return None
-    except Exception as e:
-        logger.debug(f"[LLM_ADAPTER] LiteLLM direct call failed: {e}")
-        return None
+# _call_litellm_direct() REMOVED — single endpoint enforcement (Nemoclaw pattern)
+# All LLM traffic must flow through the Brain API → LiteLLM proxy.
+# This ensures: consistent routing, spend tracking, credential separation.

@@ -49,6 +49,13 @@ conversation_dna:
   law_26_energy_shift: 8
   law_27_conversation_pulse: 7
 
+# ---- Limits (Hermes iteration budget pattern) ----
+# Prevents runaway loops and cost overruns.
+limits:
+  max_iterations: 90          # Hard cap on LLM calls per session
+  max_spend_per_session: 5.00 # USD — alert + stop at this threshold
+  max_spend_alert_pct: 80     # Alert user at 80% of budget
+
 # ---- Boundaries ----
 # What this operator will NOT do.
 boundaries: []

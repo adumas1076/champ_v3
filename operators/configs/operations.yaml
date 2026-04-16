@@ -40,6 +40,12 @@ channels:
   video: false
   screen_share: true
 
+# ---- Limits (Hermes iteration budget pattern) ----
+limits:
+  max_iterations: 90
+  max_spend_per_session: 2.00
+  max_spend_alert_pct: 80
+
 # ---- Boundaries ----
 boundaries:
   - "Never recommend scaling a broken model — fix the model first"

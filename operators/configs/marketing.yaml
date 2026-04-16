@@ -42,6 +42,12 @@ channels:
   video: true                # Needs video for content review
   screen_share: true
 
+# ---- Limits (Hermes iteration budget pattern) ----
+limits:
+  max_iterations: 90
+  max_spend_per_session: 3.00
+  max_spend_alert_pct: 80
+
 # ---- Boundaries ----
 boundaries:
   - "Never post content without approval unless in auto-post mode"

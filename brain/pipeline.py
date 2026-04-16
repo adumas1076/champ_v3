@@ -23,6 +23,7 @@ from brain.loop_selector import LoopSelector
 from brain.context_builder import ContextBuilder
 from brain.context_compressor import ContextCompressor
 from brain.llm_client import LiteLLMClient
+from brain.cortex_router import select_model
 from brain.memory import SupabaseMemory
 from brain.memory_snapshot import SnapshotManager
 from brain.memory_prefetch import MemoryPrefetcher
@@ -278,14 +279,17 @@ class BrainPipeline:
                 model=request.model,
             )
 
-        # Auto-route images to vision model (Gemini Flash)
-        model_override = {}
-        if self._has_images(request):
-            model_override = {"model": "gemini-flash"}
-            logger.info("[BRAIN] Image detected — routing to Gemini Flash (vision)")
+        # 4.7 Cortex Routing — select optimal model per-turn
+        route = select_model(
+            message=user_message,
+            has_images=self._has_images(request),
+            operator_name=operator_name,
+            current_model=request.model if request.model != self.settings.default_model else None,
+        )
+        logger.info(f"[CORTEX] {route.reason} → model={route.model} (tier={route.cost_tier})")
 
         enriched_request = request.model_copy(
-            update={"messages": enriched_messages, **model_override}
+            update={"messages": enriched_messages, "model": route.model}
         )
 
         # 5. Forward to LiteLLM
@@ -476,14 +480,17 @@ class BrainPipeline:
                 model=request.model,
             )
 
-        # Auto-route images to vision model (Gemini Flash)
-        model_override = {}
-        if self._has_images(request):
-            model_override = {"model": "gemini-flash"}
-            logger.info("[STREAM] Image detected — routing to Gemini Flash (vision)")
+        # 4.7 Cortex Routing — select optimal model per-turn
+        route = select_model(
+            message=user_message,
+            has_images=self._has_images(request),
+            operator_name=operator_name,
+            current_model=request.model if request.model != self.settings.default_model else None,
+        )
+        logger.info(f"[STREAM][CORTEX] {route.reason} → model={route.model} (tier={route.cost_tier})")
 
         enriched_request = request.model_copy(
-            update={"messages": enriched_messages, **model_override}
+            update={"messages": enriched_messages, "model": route.model}
         )
 
         # 5. Stream from LiteLLM

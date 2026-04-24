@@ -391,14 +391,29 @@ User DMs "[KEYWORD]" (e.g., "operator", "scale", "build", "brand")
 
 ---
 
-## Revenue Model (from 0030)
+## DDO Integration (from 0042)
+
+**DDO turned the Marketing Machine from "we post your content" into "we show you exactly which content made you money and automatically make more of it."**
+
+Every post by every face on every platform is tracked through the FULL conversion journey:
+- Content → click → page visit (Clarity heatmap + GA4 + FB Pixel) → lead capture → email nurture → Stripe conversion
+- Attribution graph connects every node — trace any dollar back to the exact post that started it
+- Autoresearch loop reads DDO patterns → auto-adjusts next content batch
+- Hot leads routed to sales in <60 seconds. Cold leads get content dripped. No human guessing.
+- The content gets better automatically because the data tells it what works.
+
+**8 Supabase DDO tables LIVE:** content_posts, content_performance, page_visits, leads, email_events, conversions, attribution_graph, ddo_optimizations
+
+---
+
+## Revenue Model (from 0030, updated with DDO tiers)
 
 | Tier | Price | What They Get |
 |------|-------|---------------|
 | Creator | $29/mo | 1 AI influencer, 2 platforms, basic analytics, email capture |
-| Pro | $97/mo | 3 AI influencers, 5 platforms, full analytics, nurture sequences, lead scoring |
-| Agency | $299/mo | Unlimited influencers, white-label, client dashboards, API access |
-| OS Integration | Included | Full Marketing Machine powers Cocreatiq OS operators |
+| Pro | $97/mo | 3 AI influencers, 5 platforms, **full DDO attribution + auto-optimization**, nurture sequences, lead scoring |
+| Agency | $299/mo | Unlimited influencers, white-label, **cross-client DDO intelligence**, client dashboards, API access |
+| OS Integration | Included | Full Marketing Machine + DDO powers Cocreatiq OS operators |
 
 ---
 

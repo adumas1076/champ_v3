@@ -1,0 +1,67 @@
+{
+  "$comment": "Extracted from Figma file 2xhTbDwSM7fNq0CHuIPoL6 on 2026-04-19",
+  "brand_primary": {
+    "name": "Cocreatiq Gold",
+    "hex": "#d8ad04",
+    "rgb": [216, 173, 4],
+    "usage": ["punch text", "accents", "highlights", "Create word"]
+  },
+  "background_primary": {
+    "name": "Near Black",
+    "hex": "#000000",
+    "rgb": [0, 0, 0],
+    "usage": ["main video background", "dark mode text bg"]
+  },
+  "background_wrapper": {
+    "name": "Figma Canvas Grey",
+    "hex": "#373636",
+    "rgb": [55, 54, 54],
+    "usage": ["outer wrapper only — not for actual rendering"]
+  },
+  "text_primary": {
+    "name": "Pure White",
+    "hex": "#ffffff",
+    "rgb": [255, 255, 255],
+    "usage": ["headlines", "body text", "subject labels"]
+  },
+  "overlay_darken": {
+    "name": "20% Black Overlay",
+    "hex": "#000000",
+    "alpha": 0.2,
+    "usage": ["darkening photo backgrounds for text legibility"]
+  },
+  "image_opacity": 0.91,
+
+  "palette_for_remotion": {
+    "gold": "#d8ad04",
+    "black": "#000000",
+    "white": "#ffffff",
+    "overlay": "rgba(0, 0, 0, 0.2)"
+  },
+
+  "typography": {
+    "display_font": {
+      "name": "Montage",
+      "weight": "Regular",
+      "usage": "All massive headlines — '20 YEARS', 'LIGHTING', 'How to', 'I have spent', 'Creator'",
+      "sizes": {
+        "hero_punch": 375,
+        "subject_label": 311,
+        "body_large": 96
+      },
+      "tracking": -2.95,
+      "line_height": "1.87 (for stacked) / 0.94 (for single line)"
+    },
+    "script_font": {
+      "name": "Brick",
+      "licensed_as": "Lemon Tuesday or Brick — confirm",
+      "weight": "Regular",
+      "usage": "Script accents — 'It Took Me', 'Photography/Videography', 'Design', 'Create'",
+      "sizes": {
+        "accent_small": 64,
+        "accent_body": 96
+      },
+      "tracking": -0.64
+    }
+  }
+}

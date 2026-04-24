@@ -18,6 +18,7 @@
 
 import asyncio
 import logging
+import os
 import time
 
 from dotenv import load_dotenv
@@ -27,6 +28,13 @@ from livekit.agents import AgentSession, RoomInputOptions
 from livekit.plugins import noise_cancellation, silero
 from tools import start_brain_session, end_brain_session, poll_completed_runs
 from brain.transcript_logger import TranscriptLogger
+
+# ---- Live Creatiq Avatar (our Keyframe/LiveAvatar replacement) ----
+try:
+    from avatar.livecreatiq_plugin import LiveCreatiqAvatarSession
+    LIVECREATIQ_AVAILABLE = True
+except ImportError:
+    LIVECREATIQ_AVAILABLE = False
 
 # ---- Operator imports ----
 from operators.champ import ChampOperator
@@ -153,6 +161,26 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     await ctx.connect()
+
+    # ── Live Creatiq Avatar (Ditto on Modal) ──
+    # Same pattern as Keyframe/LiveAvatar: start AFTER ctx.connect, BEFORE generating reply
+    avatar_image = os.getenv("LIVECREATIQ_SOURCE_IMAGE", "")
+    if avatar_image and LIVECREATIQ_AVAILABLE:
+        try:
+            logger.info(f"[OS] Initializing Live Creatiq Avatar: {avatar_image[:30]}...")
+            avatar = LiveCreatiqAvatarSession(
+                source_image_path=avatar_image,
+                modal_app_name=os.getenv("LIVECREATIQ_MODAL_APP", "champ-ditto-avatar"),
+            )
+            await avatar.start(session, room=ctx.room)
+            logger.info("[OS] Live Creatiq Avatar active — Genesis is live")
+        except Exception as e:
+            logger.error(f"[OS] Live Creatiq Avatar failed: {e}", exc_info=True)
+            logger.warning("[OS] Continuing without avatar (voice-only mode)")
+    elif avatar_image and not LIVECREATIQ_AVAILABLE:
+        logger.warning("[OS] LIVECREATIQ_SOURCE_IMAGE set but plugin not importable")
+    else:
+        logger.info("[OS] No LIVECREATIQ_SOURCE_IMAGE — running voice-only mode")
 
     # Enable Audio RED (Redundant Encoding) to reduce choppiness
     # Sends redundant audio packets so dropped ones don't cause gaps

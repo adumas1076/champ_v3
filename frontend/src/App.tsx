@@ -5,6 +5,7 @@ import AvatarLab from "./pages/AvatarLab";
 import AvatarStudio from "./pages/AvatarStudio";
 import ConnectStack from "./pages/ConnectStack";
 import TextChat from "./pages/TextChat";
+import FaceTime from "./pages/FaceTime";
 
 const BRAIN_URL = import.meta.env.VITE_BRAIN_URL || "http://127.0.0.1:8100";
 
@@ -12,7 +13,7 @@ function Nav() {
   const location = useLocation();
 
   // Hide nav on full-screen pages
-  if (location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/studio" || location.pathname === "/connect" || location.pathname === "/chat") return null;
+  if (location.pathname === "/call" || location.pathname === "/facetime" || location.pathname === "/avatar-lab" || location.pathname === "/studio" || location.pathname === "/connect" || location.pathname === "/chat") return null;
 
   const isActive = (path: string) =>
     location.pathname === path
@@ -46,7 +47,7 @@ function Nav() {
 
 export default function App() {
   const location = useLocation();
-  const isFullScreen = location.pathname === "/call" || location.pathname === "/avatar-lab" || location.pathname === "/studio" || location.pathname === "/connect" || location.pathname === "/chat";
+  const isFullScreen = location.pathname === "/call" || location.pathname === "/facetime" || location.pathname === "/avatar-lab" || location.pathname === "/studio" || location.pathname === "/connect" || location.pathname === "/chat";
 
   return (
     <div className="min-h-screen bg-champ-bg text-white">
@@ -54,6 +55,7 @@ export default function App() {
       {isFullScreen ? (
         <Routes>
           <Route path="/call" element={<VoiceCall brainUrl={BRAIN_URL} />} />
+          <Route path="/facetime" element={<FaceTime brainUrl={BRAIN_URL} />} />
           <Route path="/chat" element={<TextChat brainUrl={BRAIN_URL} />} />
           <Route path="/avatar-lab" element={<AvatarLab />} />
           <Route path="/studio" element={<AvatarStudio />} />
